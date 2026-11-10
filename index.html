@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0e16" />
+    <meta name="description" content="Play DNA as music while a 3D double helix moves in time. Everything runs in your browser." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>DNA Music Player</title>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <img src="/favicon.svg" alt="" width="28" height="28" />
+          <h1>DNA Music Player</h1>
+        </div>
+        <p class="privacy">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z"/></svg>
+          Runs entirely in your browser. Your DNA never leaves this device.
+        </p>
+      </header>
+
+      <main class="layout">
+        <section class="stage" aria-label="Player">
+          <div class="helix" id="helix">
+            <p class="caveat">Idealised B-DNA diagram, not a measured structure</p>
+            <div class="now-playing" id="now-playing" aria-live="off"></div>
+          </div>
+
+          <div class="strip" id="strip"></div>
+
+          <div class="transport">
+            <button id="play" class="btn-play" aria-label="Play" title="Play / pause (space)">
+              <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>
+              <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+            </button>
+            <button id="stop" class="btn-icon" aria-label="Stop" title="Stop">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5" fill="currentColor"/></svg>
+            </button>
+            <div class="progress" id="progress" role="slider" tabindex="0" aria-label="Position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <span class="time" id="time">0:00 / 0:00</span>
+          </div>
+
+          <div class="bio-panel" id="bio-panel" hidden>
+            <div class="bio-now" id="bio-now"></div>
+            <dl class="bio-stats" id="bio-stats"></dl>
+            <p class="bio-mapping" id="bio-mapping"></p>
+          </div>
+        </section>
+
+        <aside class="controls" aria-label="Settings">
+          <section class="group">
+            <h2>Sequence</h2>
+            <label class="field">
+              <span>Sample gene</span>
+              <select id="sample"></select>
+            </label>
+            <p class="hint" id="sample-about"></p>
+            <details class="import" id="import">
+              <summary>Paste or open your own FASTA</summary>
+              <textarea id="fasta-input" rows="5" spellcheck="false" placeholder=">my_gene&#10;ATGGCCCTGTGGATGCGC…"></textarea>
+              <div class="import-actions">
+                <button id="fasta-load" class="btn">Load sequence</button>
+                <label class="btn btn-ghost file-btn">
+                  Open file…
+                  <input id="fasta-file" type="file" accept=".fa,.fasta,.fna,.ffn,.fas,.seq,.txt,text/plain" />
+                </label>
+              </div>
+              <p class="hint">You can also drop a file anywhere on the page. Files are read locally and never uploaded.</p>
+            </details>
+            <label class="field" id="record-field" hidden>
+              <span>Record</span>
+              <select id="record"></select>
+            </label>
+            <p class="message" id="seq-message" role="status"></p>
+            <p class="meta" id="seq-meta"></p>
+          </section>
+
+          <section class="group">
+            <h2>Mapping</h2>
+            <div class="segmented" id="mapping" role="radiogroup" aria-label="Mapping"></div>
+            <p class="hint" id="mapping-summary"></p>
+            <label class="field" id="frame-field">
+              <span>Reading frame</span>
+              <select id="frame">
+                <option value="auto">Auto (from first ATG)</option>
+                <option value="0">Frame 1</option>
+                <option value="1">Frame 2</option>
+                <option value="2">Frame 3</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="group">
+            <h2>Sound</h2>
+            <div class="row">
+              <label class="field">
+                <span>Key</span>
+                <select id="key"></select>
+              </label>
+              <label class="field grow">
+                <span>Scale</span>
+                <select id="scale"></select>
+              </label>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="faithful" />
+              <span>Faithful mode <small>(all 12 notes, no scale)</small></span>
+            </label>
+            <label class="field">
+              <span>Tempo <output id="tempo-out">110</output> BPM</span>
+              <input type="range" id="tempo" min="50" max="220" step="1" value="110" />
+            </label>
+            <label class="field">
+              <span>Instrument</span>
+              <select id="instrument"></select>
+            </label>
+          </section>
+
+          <section class="group">
+            <label class="toggle">
+              <input type="checkbox" id="show-bio" />
+              <span>Show the biology <small>(codons, amino acids, start/stop)</small></span>
+            </label>
+          </section>
+        </aside>
+      </main>
+
+      <div class="drop-overlay" id="drop-overlay" hidden>Drop a FASTA file to play it</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

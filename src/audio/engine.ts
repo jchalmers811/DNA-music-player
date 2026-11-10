@@ -1,0 +1,138 @@
+import * as Tone from 'tone';
+import { firstEventAtOrAfter } from '../core/playhead';
+import type { NoteEvent } from '../core/types';
+import { createInstrument, type Instrument, type InstrumentId } from './instruments';
+
+export type PlayState = 'stopped' | 'playing' | 'paused';
+
+/** Scheduling grid in beats (a sixteenth note). Event onsets may fall anywhere inside a cell. */
+const GRID = 0.25;
+
+/**
+ * Plays note events against Tone's transport. The transport is the single
+ * clock: visuals read `currentBeat()` every frame instead of using timers.
+ *
+ * Events are looked up lazily, one grid cell ahead at a time, so long
+ * sequences don't have to be scheduled up front.
+ */
+export class AudioEngine {
+  state: PlayState = 'stopped';
+  onEnd: () => void = () => {};
+
+  private events: NoteEvent[] = [];
+  private totalBeats = 0;
+  private instrumentId: InstrumentId;
+  private instrument: Instrument | null = null;
+  private bus: Tone.ToneAudioNode | null = null;
+  private repeatId: number | null = null;
+  private readonly transport = Tone.getTransport();
+
+  constructor(instrumentId: InstrumentId, bpm: number) {
+    this.instrumentId = instrumentId;
+    this.transport.bpm.value = bpm;
+  }
+
+  load(events: NoteEvent[], totalBeats: number): void {
+    this.events = events;
+    this.totalBeats = totalBeats;
+    if (this.currentBeat() >= totalBeats) this.stop();
+  }
+
+  get duration(): number {
+    return this.totalBeats;
+  }
+
+  setTempo(bpm: number): void {
+    this.transport.bpm.value = bpm;
+  }
+
+  get tempo(): number {
+    return this.transport.bpm.value;
+  }
+
+  setInstrument(id: InstrumentId): void {
+    this.instrumentId = id;
+    if (!this.bus) return; // created on first play
+    this.instrument?.retire();
+    this.instrument = createInstrument(id, this.bus);
+  }
+
+  async play(): Promise<void> {
+    if (this.state === 'playing' || this.events.length === 0) return;
+    await Tone.start();
+    this.ensureAudio();
+    this.transport.start();
+    this.state = 'playing';
+  }
+
+  pause(): void {
+    if (this.state !== 'playing') return;
+    this.transport.pause();
+    this.state = 'paused';
+  }
+
+  stop(): void {
+    this.transport.stop();
+    this.transport.ticks = 0;
+    this.instrument && this.releaseSoon();
+    this.state = 'stopped';
+  }
+
+  seek(beat: number): void {
+    const clamped = Math.max(0, Math.min(beat, this.totalBeats));
+    this.transport.ticks = Math.round(clamped * this.transport.PPQ);
+    if (this.state === 'stopped') this.state = 'paused';
+  }
+
+  /** Audible position in beats. */
+  currentBeat(): number {
+    if (this.state === 'stopped') return 0;
+    const ticks = this.state === 'playing' ? this.transport.getTicksAtTime(Tone.immediate()) : this.transport.ticks;
+    return ticks / this.transport.PPQ;
+  }
+
+  private releaseSoon(): void {
+    // Re-create the instrument so held notes cut off cleanly on stop.
+    if (!this.bus) return;
+    this.instrument?.retire();
+    this.instrument = createInstrument(this.instrumentId, this.bus);
+  }
+
+  private ensureAudio(): void {
+    if (this.bus) return;
+    const ctx = Tone.getContext();
+    ctx.lookAhead = 0.06;
+    const limiter = new Tone.Limiter(-1).toDestination();
+    const reverb = new Tone.Reverb({ decay: 2.6, wet: 0.22 }).connect(limiter);
+    this.bus = reverb;
+    this.instrument = createInstrument(this.instrumentId, reverb);
+    this.repeatId = this.transport.scheduleRepeat((time) => this.tick(time), '16n', 0);
+  }
+
+  private tick(time: number): void {
+    const ppq = this.transport.PPQ;
+    const beat = Math.round(this.transport.getTicksAtTime(time)) / ppq;
+    if (beat >= this.totalBeats) {
+      Tone.getDraw().schedule(() => this.finish(), time);
+      return;
+    }
+    const spb = 60 / this.transport.bpm.value;
+    const { events } = this;
+    for (let i = firstEventAtOrAfter(events, beat); i < events.length && events[i].time < beat + GRID - 1e-9; i++) {
+      const ev = events[i];
+      if (ev.midi === null || !this.instrument) continue;
+      this.instrument.play(ev.midi, ev.duration * spb, time + (ev.time - beat) * spb, ev.velocity);
+    }
+  }
+
+  private finish(): void {
+    if (this.state !== 'playing') return;
+    this.stop();
+    this.onEnd();
+  }
+
+  dispose(): void {
+    if (this.repeatId !== null) this.transport.clear(this.repeatId);
+    this.transport.stop();
+  }
+}

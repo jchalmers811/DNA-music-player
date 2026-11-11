@@ -70,6 +70,16 @@ describe('music', () => {
     expect(rootMidi(9, 60)).toBe(57);
   });
 
+  it('the seven modes are rotations of the major scale', () => {
+    const major = SCALES.major.intervals;
+    const modes = ['major', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'minor', 'locrian'] as const;
+    modes.forEach((id, k) => {
+      const rotated = major.map((_, i) => (major[(i + k) % 7] - major[k] + 12) % 12);
+      expect(SCALES[id].intervals).toEqual(rotated);
+    });
+    expect(degreeToMidi(1, SCALES.phrygian.intervals, 64)).toBe(65); // E Phrygian: E → F
+  });
+
   it('faithful mode is chromatic', () => {
     expect(scaleIntervals({ ...settings, faithful: true })).toHaveLength(12);
   });

@@ -8,9 +8,12 @@ export type ScaleId =
   | 'majorPentatonic'
   | 'minorPentatonic'
   | 'major'
-  | 'minor'
   | 'dorian'
-  | 'mixolydian';
+  | 'phrygian'
+  | 'lydian'
+  | 'mixolydian'
+  | 'minor'
+  | 'locrian';
 
 export interface MusicSettings {
   /** Root pitch class, 0 = C … 11 = B. */

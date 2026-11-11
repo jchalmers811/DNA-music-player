@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- All seven modes in the Scale menu: Ionian (major), Dorian, Phrygian, Lydian, Mixolydian, Aeolian (natural minor) and Locrian.
+
 ## 0.2.0: Gene to protein
 
 - New **Gene → protein** view, alongside the double helix. DNA unzips inside RNA polymerase, mRNA flows to the ribosome, and the ribosome reads one codon per note while the protein chain grows. At the stop codon the chain is released and settles into its folded shape, which you can drag to turn.

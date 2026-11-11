@@ -76,6 +76,8 @@ export class AudioEngine {
 
   async play(): Promise<void> {
     if (this.state === 'playing' || this.events.length === 0) return;
+    // Finished pieces wait at the end (so the visuals keep the final state); play restarts them.
+    if (this.state === 'paused' && this.transport.ticks >= this.totalBeats * this.transport.PPQ) this.transport.ticks = 0;
     await Tone.start();
     this.ensureAudio();
     this.transport.start();
@@ -143,7 +145,11 @@ export class AudioEngine {
 
   private finish(): void {
     if (this.state !== 'playing') return;
-    this.stop();
+    // Hold at the end rather than jumping back to the start.
+    this.transport.pause();
+    this.transport.ticks = Math.round(this.totalBeats * this.transport.PPQ);
+    this.releaseSoon();
+    this.setState('paused');
   }
 
   dispose(): void {

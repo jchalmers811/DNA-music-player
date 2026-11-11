@@ -115,6 +115,12 @@ export class HelixView {
     this.seq = seq;
   }
 
+  setVisible(visible: boolean): void {
+    // three.js sets an inline display:block on its canvas, so `hidden` alone isn't enough.
+    this.renderer.domElement.style.display = visible ? 'block' : 'none';
+    if (visible) this.resize();
+  }
+
   /** Per-base backbone tints, e.g. start/stop codons. */
   setMarkers(markers: Map<number, number>): void {
     this.markers = markers;

@@ -144,7 +144,56 @@ For each base, compute the angle and height, place a backbone sphere on each str
 - Cap the visible window and instance count on mobile
 - Keep the helix renderer independent of audio: it takes the sequence, a playhead position and a set of highlights
 
-## 6. Architecture
+## 6. From gene to protein: the second visual
+
+A second view, alongside the helix, that shows what a cell does with a gene. DNA is transcribed into RNA, the RNA is translated into a chain of amino acids, and the chain folds into a 3D protein. It plays in sync with the music: the ribosome steps forward one codon per note.
+
+### The scene
+
+One continuous flow across the screen:
+
+1. **DNA:** a simplified ladder, less detailed than the helix view, entering from one side.
+2. **RNA polymerase:** a soft, rounded body that the DNA passes through. The DNA unzips inside it and zips back up behind it.
+3. **mRNA:** a single strand comes out. Its letters match the gene's coding strand, with U in place of T.
+4. **Ribosome:** a two-part body (small and large subunits) that the mRNA threads through, reading one codon at a time.
+5. **Protein chain:** one bead per amino acid comes out of the ribosome. Beads are coloured by property (water-avoiding, water-loving, charged), and the chain starts folding as it emerges, as real proteins do.
+6. **Folded protein:** at the stop codon the chain is released and settles into its final shape, which the user can rotate.
+
+A short note in the UI should list what is simplified. In cells with a nucleus (such as ours), transcription happens in the nucleus and translation outside it, introns are cut out of the RNA before translation, and tRNA molecules carry each amino acid to the ribosome. tRNAs could be added later as polish.
+
+### Syncing with the music
+
+- In the amino-acid and codon mappings, the ribosome advances one codon per note event. In base mode, the polymerase advances one base per note and the ribosome one codon per three notes.
+- The polymerase runs a fixed distance ahead of the ribosome. Real cells don't couple them this way (bacteria come closest), but it keeps both machines on screen.
+- Like the helix, the scene takes the sequence, a playhead position and a set of highlights, and knows nothing about audio.
+- Seeking must work, so the scene's state has to be computable from the playhead position, not built up frame by frame. Compute the fold once when the sequence loads, record each residue's path from "just emerged" to "settled", and look up positions from the playhead.
+
+### Estimating the 3D structure
+
+There are three ways to get the protein's shape. They can be combined.
+
+| Approach | How | Accuracy | Works for | Privacy |
+|---|---|---|---|---|
+| Rough local estimate | Predict helix, strand or loop for each residue with a simple statistical method (Chou–Fasman or GOR), build ideal helices and strands, then run a quick simplified physics simulation that pulls water-avoiding residues together into a compact core | Illustrative only. Helices and strands are about 55–65% right; the overall fold is not the real one | Any sequence, offline | Stays local |
+| Known structures for the samples | Ship the AlphaFold Database's predicted models for the bundled genes (UniProt P01308 insulin, P68871 haemoglobin beta, P42212 GFP), keeping one point per residue (the alpha carbon) | Close to the real structure | Bundled samples only | Stays local (shipped with the app) |
+| Opt-in online prediction | Send the amino-acid sequence to a public structure-prediction service such as ESMFold | Good for many proteins | Any sequence | Breaks the local-only promise. Off by default, explicit opt-in, with a clear warning |
+
+**Feasibility:**
+
+- **Transcription and translation scene:** feasible. It's a stylised Three.js scene using the same techniques as the helix: instanced meshes and a shared playhead.
+- **Rough fold:** feasible in the browser and fast enough to animate. It will look like a protein, with helices, strands and a compact core, but it is not a prediction and must be labelled as illustrative. The hard part is making it look good and stay stable, not the maths.
+- **Known structures for the samples:** easy, and accurate. AlphaFold Database models are released under CC BY 4.0, so the app must credit them.
+- **Accurate prediction in the browser:** not feasible. Tools like AlphaFold and ESMFold rely on models several gigabytes in size that need a GPU server.
+
+**Caveats:**
+
+- Insulin is made as preproinsulin and then cut into two chains joined by sulphur bridges. The chain the ribosome builds is not the final hormone, which is a good teaching moment for the UI.
+- Haemoglobin works as a group of four chains holding iron-containing haem. The view shows one chain only.
+- If the input is genomic DNA with introns, or has no long open reading frame (a stretch with no stop codon), the protein is wrong or tiny. Detect this and say so.
+- Cap the bead count for very long proteins, for example at 1,500 residues, on top of the mobile caps.
+- Draw the protein as a tube through the residue positions to start, with flat ribbons for helices and strands as later polish.
+
+## 7. Architecture
 
 Everything can run in the browser:
 
@@ -162,41 +211,49 @@ A human genome is about 3 billion bases. To keep playback practical:
 - Use window summarisation or sampling for long regions
 - Generate note events lazily, in chunks just ahead of the playhead
 
-## 7. Privacy
+## 8. Privacy
 
 Genetic data is among the most sensitive data a person has. Processing everything locally, with no upload and no server storage, simplifies the architecture and is a strong selling point. State it prominently in the interface. Shareable links should carry settings and gene identifiers only, never personal data.
 
-## 8. Roadmap
+## 9. Roadmap
 
-**MVP**
+**MVP (built)**
 
 - FASTA import
 - Base, codon and degenerate-codon mappings
 - Scale, key, tempo and instrument controls
 - Play and pause with a scrolling sequence view
-- Basic 3D helix synced to playback
+- Basic 3D helix synced to playback, with pulse and codon highlighting
 
-**Version 2**
+**Version 2: visualisations (built, v0.2.0)**
 
-- Consumer raw-data and VCF import with an overview mode
-- Three-reading-frame, biology-driven and variant-driven mappings
-- Pulse and codon highlighting on the helix
+- Gene-to-protein scene: DNA → RNA polymerase → mRNA → ribosome → amino-acid chain, synced to playback (see section 6). It includes the protein drawn as a tube coloured by amino-acid property, with the current residue highlighted, and a switch between this view and the helix, both sharing one playhead (one view at a time on mobile).
+- Rough in-browser fold estimate for any sequence, clearly labelled as illustrative
+
+**Possible features** (not yet scheduled)
+
+- Predicted 3D structures for the sample genes from the AlphaFold Database, replacing the rough fold when a sample is playing
+- Consumer raw-data (23andMe / Ancestry) and VCF import, with an overview mode for choosing a chromosome or region
+- Three-reading-frame mapping: all three frames played at once as three voices
+- Biology-driven mapping: GC content, start and stop codons and gene annotations shaping the music
+- Variant-driven mapping for SNP and VCF data; needed for raw-data import
+- Helix polish: reading-frame tints, variant glow, bloom
 - MIDI and WAV export
-
-**Version 3**
-
-- Comparison mode with two parallel sequences and side-by-side helices
-- Mutation playground
+- Comparison mode with two parallel sequences and side-by-side helices; needs sequence alignment
+- Mutation playground: edit a base and hear the change, with a sickle-cell demo on haemoglobin beta
 - Protein-property and chord-based mappings
-- Shareable settings links and extra visualisers such as a circular genome view
+- Shareable settings links carrying settings and sample names only, never DNA
+- Extra visualisers such as a circular genome view
+- Opt-in online structure prediction (e.g. ESMFold) for user sequences, with a clear privacy warning
 
-## 9. Open decisions
+## 10. Open decisions
 
 1. **Audience:** a general-audience curiosity and art toy, or an educational tool for students? This decides how much biology to surface.
 2. **Primary input:** the user's own consumer DNA data, or reference genes? The first is more personal; the second is simpler and safer for demos.
 3. **Platform:** web first for easy sharing, or mobile for a "play my genome" experience?
 4. **Sound design:** how much to favour pleasant, constrained music versus faithful, unconstrained sonification?
+5. **Online structure prediction:** offer an opt-in online service for accurate folds of user sequences, or stay strictly local and accept rough estimates?
 
-## 10. Suggested next step
+## 11. Suggested next step
 
 Build a small prototype: paste a FASTA sequence, choose from three mappings, and watch a Three.js helix scroll and pulse in sync with Web Audio playback. That quickly shows which mappings sound good and whether the visual works.

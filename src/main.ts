@@ -1,4 +1,5 @@
 import './style.css';
+import { version } from '../package.json';
 import { AudioEngine } from './audio/engine';
 import { INSTRUMENTS, type InstrumentId } from './audio/instruments';
 import { parseFasta, type FastaRecord } from './core/fasta';
@@ -6,10 +7,27 @@ import { AMINO_ACIDS, BASE_NAMES, complement, gcContent, translate, translateCod
 import { getMapping, MAPPINGS, resolveReadingStart, type MappingId } from './core/mappings';
 import { KEY_NAMES, midiToName, SCALES } from './core/music';
 import { eventIndexAt, eventIndexForBase, positionAt } from './core/playhead';
+import { foldProtein, type FoldResult } from './core/fold';
+import {
+  PROPERTY_LABELS,
+  predictSecondaryStructure,
+  proteinFrom,
+  structureSummary,
+  type PropertyClass,
+  type ProteinChain,
+} from './core/protein';
 import { SAMPLES } from './core/samples';
 import type { Base, FrameSetting, MappingResult, MusicSettings, ScaleId } from './core/types';
 import { SequenceStrip } from './ui/strip';
+import { GeneScene, PROPERTY_COLORS } from './visual/geneScene';
 import { HelixView, type HelixHighlight } from './visual/helix';
+
+type ViewId = 'helix' | 'protein';
+const VIEW_KEY = 'dna-music-player:view';
+const CAVEATS: Record<ViewId, string> = {
+  helix: 'Idealised B-DNA diagram, not a measured structure',
+  protein: 'Simplified view. The protein shape is a rough estimate, not a prediction. Drag to turn it.',
+};
 
 /** Longer inputs are truncated for now; window summarisation arrives in V2. */
 const MAX_BASES = 200_000;
@@ -52,6 +70,10 @@ const ui = {
   instrument: $<HTMLSelectElement>('instrument'),
   showBio: $<HTMLInputElement>('show-bio'),
   dropOverlay: $('drop-overlay'),
+  viewSwitch: $('view-switch'),
+  caveat: $('caveat'),
+  legend: $('legend'),
+  sceneNote: $('scene-note'),
 };
 
 // ---------- State ----------
@@ -68,11 +90,78 @@ const state = {
 let result: MappingResult = { events: [], totalBeats: 0, readingStart: 0 };
 let frameStart = 0; // reading frame shown in biology views
 let lastBioIndex = -2;
+let view: ViewId = readStoredView();
+let chain: ProteinChain = { residues: '', stopFound: false, truncated: false };
+const foldCache = new Map<string, FoldResult>();
 
 const isSmall = window.matchMedia('(max-width: 860px)').matches;
 const engine = new AudioEngine(state.instrument, state.tempo);
 const helix = new HelixView(ui.helix, isSmall ? 110 : 170);
+const geneScene = new GeneScene(ui.helix, $('scene-labels'), { small: isSmall });
 const strip = new SequenceStrip($('strip'));
+
+$('version').textContent = `v${version}`;
+
+// ---------- Views ----------
+function readStoredView(): ViewId {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'protein' ? 'protein' : 'helix';
+  } catch {
+    return 'helix';
+  }
+}
+
+function setView(next: ViewId) {
+  view = next;
+  try {
+    localStorage.setItem(VIEW_KEY, next);
+  } catch {
+    /* storage unavailable: the choice just isn't remembered */
+  }
+  helix.setVisible(next === 'helix');
+  geneScene.setVisible(next === 'protein');
+  for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button'))
+    btn.setAttribute('aria-checked', String(btn.dataset.view === next));
+  ui.caveat.textContent = CAVEATS[next];
+  ui.legend.hidden = next !== 'protein';
+  ui.helix.classList.toggle('view-protein', next === 'protein');
+  updateProtein();
+}
+
+/** Work out the protein for the current reading frame; fold it only when the protein view needs it. */
+function updateProtein() {
+  chain = proteinFrom(state.sequence, frameStart);
+  geneScene.setSequence(state.sequence, frameStart);
+  const note = proteinNote(chain);
+  ui.sceneNote.textContent = note;
+  ui.sceneNote.hidden = view !== 'protein' || note === '';
+  if (view !== 'protein') return;
+  if (!chain.residues) {
+    geneScene.setProtein(null);
+    return;
+  }
+  let fold = foldCache.get(chain.residues);
+  if (!fold) {
+    fold = foldProtein(chain.residues);
+    if (foldCache.size > 8) foldCache.clear();
+    foldCache.set(chain.residues, fold);
+  }
+  geneScene.setProtein({ residues: chain.residues, fold, stopFound: chain.stopFound });
+}
+
+function proteinNote(c: ProteinChain): string {
+  if (!c.residues) return 'No protein here: the reading frame has no complete codons before a stop codon.';
+  if (c.truncated) return `This protein is very long, so only the first ${c.residues.length.toLocaleString()} amino acids are shown.`;
+  if (!c.stopFound) return 'No stop codon in this reading frame, so the chain is never released from the ribosome.';
+  return '';
+}
+
+ui.legend.innerHTML = (Object.keys(PROPERTY_LABELS) as PropertyClass[])
+  .map(
+    (k) =>
+      `<span><i style="background:#${PROPERTY_COLORS[k].toString(16).padStart(6, '0')}"></i>${PROPERTY_LABELS[k]}</span>`,
+  )
+  .join('');
 
 // ---------- Populate controls ----------
 for (const s of SAMPLES) ui.sample.add(new Option(s.name, s.id));
@@ -188,6 +277,7 @@ function remap(keepPosition: boolean) {
   }
   helix.setMarkers(markers);
   strip.setData(state.sequence, frameStart, state.showBiology);
+  updateProtein();
   lastBioIndex = -2;
   syncControls();
 }
@@ -220,12 +310,18 @@ function syncControls() {
     const firstStop = protein.indexOf('*');
     const proteinLen = firstStop < 0 ? protein.length : firstStop;
     const stops = (protein.match(/\*/g) ?? []).length;
+    const ss = structureSummary(predictSecondaryStructure(chain.residues));
+    const pct = (x: number) => `${Math.round(x * 100)}%`;
     ui.bioStats.innerHTML = [
       ['Length', `${seq.length.toLocaleString()} bases`],
       ['GC content', `${Math.round(gcContent(seq) * 100)}%`],
       ['Reading frame', frameText],
       ['Protein', `${proteinLen.toLocaleString()} amino acids before the first stop`],
       ['Stop codons in frame', stops.toLocaleString()],
+      [
+        'Shape (rough estimate)',
+        chain.residues ? `${pct(ss.helix)} helix · ${pct(ss.strand)} strand · ${pct(ss.coil)} loop` : '—',
+      ],
     ]
       .map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`)
       .join('');
@@ -305,13 +401,15 @@ function frame(now: number) {
   const pulse = sounding ? Math.exp(-ph.sinceOnset * spb * 5) : 0;
   const hl: HelixHighlight | null = ev && engine.state !== 'stopped' ? { start: ev.start, length: ev.length, pulse } : null;
 
-  helix.render(ph.pos, hl, now / 1000);
+  if (view === 'helix') helix.render(ph.pos, hl, now / 1000);
+  else geneScene.render(ph.pos, hl, now / 1000);
   strip.update(ph.pos, hl);
 
-  const frac = result.totalBeats > 0 ? Math.min(1, beat / result.totalBeats) : 0;
+  const shownBeat = Math.min(beat, result.totalBeats);
+  const frac = result.totalBeats > 0 ? shownBeat / result.totalBeats : 0;
   ui.progressFill.style.width = `${frac * 100}%`;
   ui.progress.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
-  ui.time.textContent = `${formatTime(beat * spb)} / ${formatTime(result.totalBeats * spb)}`;
+  ui.time.textContent = `${formatTime(shownBeat * spb)} / ${formatTime(result.totalBeats * spb)}`;
 
   const shownIndex = engine.state === 'stopped' ? -1 : ph.index;
   if (shownIndex !== lastBioIndex) {
@@ -416,7 +514,11 @@ window.addEventListener('drop', (e) => {
   if (file) loadFile(file);
 });
 
+for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button'))
+  btn.addEventListener('click', () => setView(btn.dataset.view as ViewId));
+
 // ---------- Start ----------
 loadSample(SAMPLES[0].id);
+setView(view);
 renderTransport();
 requestAnimationFrame(frame);

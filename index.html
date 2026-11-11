@@ -14,6 +14,7 @@
         <div class="brand">
           <img src="/favicon.svg" alt="" width="28" height="28" />
           <h1>DNA Music Player</h1>
+          <span class="version" id="version"></span>
         </div>
         <p class="privacy">
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z"/></svg>
@@ -23,9 +24,16 @@
 
       <main class="layout">
         <section class="stage" aria-label="Player">
+          <div class="segmented view-switch" id="view-switch" role="radiogroup" aria-label="View">
+            <button type="button" role="radio" data-view="helix">Double helix</button>
+            <button type="button" role="radio" data-view="protein">Gene → protein</button>
+          </div>
           <div class="helix" id="helix">
-            <p class="caveat">Idealised B-DNA diagram, not a measured structure</p>
+            <div class="scene-labels" id="scene-labels" aria-hidden="true"></div>
+            <p class="caveat" id="caveat">Idealised B-DNA diagram, not a measured structure</p>
             <div class="now-playing" id="now-playing" aria-live="off"></div>
+            <div class="legend" id="legend" hidden></div>
+            <p class="scene-note" id="scene-note" hidden></p>
           </div>
 
           <div class="strip" id="strip"></div>

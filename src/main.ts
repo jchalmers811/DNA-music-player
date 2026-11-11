@@ -112,11 +112,14 @@ function loadRecord(record: FastaRecord, name: string) {
       'warn',
     );
   }
+  // Switching sequence starts it from the top, and keeps playing if it was playing.
+  const wasPlaying = engine.state === 'playing';
   engine.stop();
   state.sequence = seq;
   state.name = name;
   helix.setSequence(seq);
   remap(false);
+  if (wasPlaying) void engine.play();
 }
 
 function loadSample(id: string) {
@@ -237,7 +240,6 @@ function currentPosition() {
 async function togglePlay() {
   if (engine.state === 'playing') engine.pause();
   else await engine.play();
-  renderTransport();
 }
 
 function renderTransport() {
@@ -246,7 +248,8 @@ function renderTransport() {
   ui.play.setAttribute('aria-label', playing ? 'Pause' : 'Play');
 }
 
-engine.onEnd = () => renderTransport();
+// The button always mirrors the engine, whatever changed its state.
+engine.onStateChange = () => renderTransport();
 
 function seekToFraction(frac: number) {
   if (!result.events.length) return;
@@ -322,10 +325,7 @@ function frame(now: number) {
 
 // ---------- Events ----------
 ui.play.addEventListener('click', togglePlay);
-ui.stop.addEventListener('click', () => {
-  engine.stop();
-  renderTransport();
-});
+ui.stop.addEventListener('click', () => engine.stop());
 window.addEventListener('keydown', (e) => {
   const t = e.target as HTMLElement;
   if (e.code !== 'Space' || t.closest('textarea, input, select, button, [role="slider"]')) return;

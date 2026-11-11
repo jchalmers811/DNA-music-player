@@ -16,8 +16,19 @@ const GRID = 0.25;
  * sequences don't have to be scheduled up front.
  */
 export class AudioEngine {
-  state: PlayState = 'stopped';
-  onEnd: () => void = () => {};
+  private _state: PlayState = 'stopped';
+  /** Called whenever the play state changes, for any reason (user action, end of piece, reload). */
+  onStateChange: (state: PlayState) => void = () => {};
+
+  get state(): PlayState {
+    return this._state;
+  }
+
+  private setState(next: PlayState): void {
+    if (next === this._state) return;
+    this._state = next;
+    this.onStateChange(next);
+  }
 
   private events: NoteEvent[] = [];
   private totalBeats = 0;
@@ -33,9 +44,9 @@ export class AudioEngine {
   }
 
   load(events: NoteEvent[], totalBeats: number): void {
+    // Callers re-seek after loading; a position past the new end is handled by tick() → finish().
     this.events = events;
     this.totalBeats = totalBeats;
-    if (this.currentBeat() >= totalBeats) this.stop();
   }
 
   get duration(): number {
@@ -62,26 +73,26 @@ export class AudioEngine {
     await Tone.start();
     this.ensureAudio();
     this.transport.start();
-    this.state = 'playing';
+    this.setState('playing');
   }
 
   pause(): void {
     if (this.state !== 'playing') return;
     this.transport.pause();
-    this.state = 'paused';
+    this.setState('paused');
   }
 
   stop(): void {
     this.transport.stop();
     this.transport.ticks = 0;
     this.instrument && this.releaseSoon();
-    this.state = 'stopped';
+    this.setState('stopped');
   }
 
   seek(beat: number): void {
     const clamped = Math.max(0, Math.min(beat, this.totalBeats));
     this.transport.ticks = Math.round(clamped * this.transport.PPQ);
-    if (this.state === 'stopped') this.state = 'paused';
+    if (this.state === 'stopped') this.setState('paused');
   }
 
   /** Audible position in beats. */
@@ -128,7 +139,6 @@ export class AudioEngine {
   private finish(): void {
     if (this.state !== 'playing') return;
     this.stop();
-    this.onEnd();
   }
 
   dispose(): void {

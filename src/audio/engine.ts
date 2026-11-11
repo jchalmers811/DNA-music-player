@@ -41,6 +41,9 @@ export class AudioEngine {
   constructor(instrumentId: InstrumentId, bpm: number) {
     this.instrumentId = instrumentId;
     this.transport.bpm.value = bpm;
+    // Register the scheduler up front. Registering it on the first play, just before
+    // transport.start(), meant it never fired and the first play was silent.
+    this.repeatId = this.transport.scheduleRepeat((time) => this.tick(time), '16n', 0);
   }
 
   load(events: NoteEvent[], totalBeats: number): void {
@@ -117,7 +120,6 @@ export class AudioEngine {
     const reverb = new Tone.Reverb({ decay: 2.6, wet: 0.22 }).connect(limiter);
     this.bus = reverb;
     this.instrument = createInstrument(this.instrumentId, reverb);
-    this.repeatId = this.transport.scheduleRepeat((time) => this.tick(time), '16n', 0);
   }
 
   private tick(time: number): void {

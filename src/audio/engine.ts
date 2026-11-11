@@ -40,6 +40,9 @@ export class AudioEngine {
 
   constructor(instrumentId: InstrumentId, bpm: number) {
     this.instrumentId = instrumentId;
+    // Set once, before anything is scheduled. Changing lookAhead later moves "now" backwards,
+    // so a start could land before an earlier stop and be cancelled (frozen, silent first play).
+    Tone.getContext().lookAhead = 0.06;
     this.transport.bpm.value = bpm;
     // Register the scheduler up front. Registering it on the first play, just before
     // transport.start(), meant it never fired and the first play was silent.
@@ -86,7 +89,9 @@ export class AudioEngine {
   }
 
   stop(): void {
-    this.transport.stop();
+    // Only stop a transport that is running or paused. Before the first play the AudioContext
+    // is suspended at time 0, and a stop scheduled then can cancel the first start.
+    if (this.transport.state !== 'stopped') this.transport.stop();
     this.transport.ticks = 0;
     this.instrument && this.releaseSoon();
     this.setState('stopped');
@@ -114,8 +119,6 @@ export class AudioEngine {
 
   private ensureAudio(): void {
     if (this.bus) return;
-    const ctx = Tone.getContext();
-    ctx.lookAhead = 0.06;
     const limiter = new Tone.Limiter(-1).toDestination();
     const reverb = new Tone.Reverb({ decay: 2.6, wet: 0.22 }).connect(limiter);
     this.bus = reverb;

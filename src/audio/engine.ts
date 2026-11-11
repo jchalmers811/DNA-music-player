@@ -1,6 +1,8 @@
 import * as Tone from 'tone';
 import { firstEventAtOrAfter } from '../core/playhead';
+import type { DrumHit } from '../core/drums';
 import type { NoteEvent } from '../core/types';
+import { DrumKit } from './drums';
 import { createInstrument, type Instrument, type InstrumentId } from './instruments';
 
 export type PlayState = 'stopped' | 'playing' | 'paused';
@@ -31,6 +33,9 @@ export class AudioEngine {
   }
 
   private events: NoteEvent[] = [];
+  private drums: DrumHit[] = [];
+  private drumLevel = 0.7;
+  private kit: DrumKit | null = null;
   private totalBeats = 0;
   private instrumentId: InstrumentId;
   private instrument: Instrument | null = null;
@@ -53,6 +58,17 @@ export class AudioEngine {
     // Callers re-seek after loading; a position past the new end is handled by tick() → finish().
     this.events = events;
     this.totalBeats = totalBeats;
+  }
+
+  /** Drum hits to play alongside the notes (empty = no percussion). */
+  loadDrums(hits: DrumHit[]): void {
+    this.drums = hits;
+  }
+
+  /** Drum volume, 0..1. */
+  setDrumLevel(level: number): void {
+    this.drumLevel = level;
+    this.kit?.setLevel(level);
   }
 
   get duration(): number {
@@ -125,6 +141,9 @@ export class AudioEngine {
     const reverb = new Tone.Reverb({ decay: 2.6, wet: 0.22 }).connect(limiter);
     this.bus = reverb;
     this.instrument = createInstrument(this.instrumentId, reverb);
+    // Drums stay dry (no reverb) so they sound tight.
+    this.kit = new DrumKit(limiter);
+    this.kit.setLevel(this.drumLevel);
   }
 
   private tick(time: number): void {
@@ -140,6 +159,12 @@ export class AudioEngine {
       const ev = events[i];
       if (ev.midi === null || !this.instrument) continue;
       this.instrument.play(ev.midi, ev.duration * spb, time + (ev.time - beat) * spb, ev.velocity);
+    }
+    const { drums, kit } = this;
+    if (!kit) return;
+    for (let i = firstEventAtOrAfter(drums, beat); i < drums.length && drums[i].time < beat + GRID - 1e-9; i++) {
+      const h = drums[i];
+      kit.play(h, time + (h.time - beat) * spb);
     }
   }
 

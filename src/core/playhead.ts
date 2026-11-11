@@ -15,8 +15,8 @@ export function eventIndexAt(events: NoteEvent[], beat: number): number {
   return ans;
 }
 
-/** Index of the first event with time >= beat. Returns events.length if none. */
-export function firstEventAtOrAfter(events: NoteEvent[], beat: number): number {
+/** Index of the first event (note or drum hit) with time >= beat. Returns events.length if none. */
+export function firstEventAtOrAfter(events: { time: number }[], beat: number): number {
   let lo = 0;
   let hi = events.length;
   while (lo < hi) {

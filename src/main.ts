@@ -2,6 +2,7 @@ import './style.css';
 import { version } from '../package.json';
 import { AudioEngine } from './audio/engine';
 import { INSTRUMENTS, type InstrumentId } from './audio/instruments';
+import { BEATS, DEFAULT_BEAT, drumHits, type BeatId } from './core/drums';
 import { parseFasta, type FastaRecord } from './core/fasta';
 import { AMINO_ACIDS, BASE_NAMES, complement, gcContent, translate, translateCodon } from './core/genetics';
 import { getMapping, MAPPINGS, resolveReadingStart, type MappingId } from './core/mappings';
@@ -68,6 +69,11 @@ const ui = {
   tempo: $<HTMLInputElement>('tempo'),
   tempoOut: $('tempo-out'),
   instrument: $<HTMLSelectElement>('instrument'),
+  beat: $<HTMLSelectElement>('beat'),
+  beatAbout: $('beat-about'),
+  drumLevelField: $('drum-level-field'),
+  drumLevel: $<HTMLInputElement>('drum-level'),
+  drumLevelOut: $('drum-level-out'),
   showBio: $<HTMLInputElement>('show-bio'),
   dropOverlay: $('drop-overlay'),
   viewSwitch: $('view-switch'),
@@ -85,6 +91,8 @@ const state = {
   settings: { key: 0, scale: 'majorPentatonic', faithful: false, frame: 'auto' } as MusicSettings,
   tempo: 110,
   instrument: 'keys' as InstrumentId,
+  beat: DEFAULT_BEAT as BeatId,
+  drumLevel: 0.7,
   showBiology: false,
 };
 let result: MappingResult = { events: [], totalBeats: 0, readingStart: 0 };
@@ -183,6 +191,8 @@ for (const m of MAPPINGS) {
 KEY_NAMES.forEach((k, i) => ui.key.add(new Option(k, String(i))));
 for (const [id, s] of Object.entries(SCALES)) ui.scale.add(new Option(s.name, id));
 for (const inst of INSTRUMENTS) ui.instrument.add(new Option(inst.name, inst.id));
+for (const b of BEATS) ui.beat.add(new Option(b.name, b.id));
+ui.beat.value = state.beat;
 ui.scale.value = state.settings.scale;
 ui.instrument.value = state.instrument;
 
@@ -277,9 +287,15 @@ function remap(keepPosition: boolean) {
   }
   helix.setMarkers(markers);
   strip.setData(state.sequence, frameStart, state.showBiology);
+  updateDrums();
   updateProtein();
   lastBioIndex = -2;
   syncControls();
+}
+
+/** Percussion follows the mapping, sequence and key, so it's rebuilt whenever they change. */
+function updateDrums() {
+  engine.loadDrums(drumHits(state.beat, result.events, result.totalBeats, state.sequence, state.settings.key));
 }
 
 function syncControls() {
@@ -289,6 +305,8 @@ function syncControls() {
   ui.mappingSummary.textContent = mapping.summary;
   ui.frameField.hidden = !mapping.usesFrame;
   ui.scale.disabled = state.settings.faithful;
+  ui.beatAbout.textContent = BEATS.find((b) => b.id === state.beat)?.description ?? '';
+  ui.drumLevelField.hidden = state.beat === 'off';
   ui.bioPanel.hidden = !state.showBiology;
   ui.bioMapping.textContent = mapping.biology;
 
@@ -488,6 +506,16 @@ ui.tempo.addEventListener('input', () => {
 ui.instrument.addEventListener('change', () => {
   state.instrument = ui.instrument.value as InstrumentId;
   engine.setInstrument(state.instrument);
+});
+ui.beat.addEventListener('change', () => {
+  state.beat = ui.beat.value as BeatId;
+  updateDrums();
+  syncControls();
+});
+ui.drumLevel.addEventListener('input', () => {
+  state.drumLevel = Number(ui.drumLevel.value) / 100;
+  ui.drumLevelOut.textContent = ui.drumLevel.value;
+  engine.setDrumLevel(state.drumLevel);
 });
 ui.showBio.addEventListener('change', () => {
   state.showBiology = ui.showBio.checked;

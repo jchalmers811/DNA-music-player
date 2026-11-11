@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.0: Percussion and modes
 
 - All seven modes in the Scale menu: Ionian (major), Dorian, Phrygian, Lydian, Mixolydian, Aeolian (natural minor) and Locrian.
+- Percussion with a drum volume slider and a choice of beats: Steady (the default), Backbeat, Half-time, Breakbeat, Shuffle, **808 trap** (booming 808 tuned to the key, clap on 3, hi-hat rolls), **808 trap (slices)** (adds occasional stuttering hi-hat bursts that sweep in tone) and **From the sequence**, where the amino acids or bases play the drums. Choose Off for none. All drums are synthesised; nothing is downloaded.
+- Every beat opens with its own intro fill and closes with its own outro fill and a final crash, using toms tuned to the key. In "From the sequence", the fills play the gene's first and last bases on the toms.
 
 ## 0.2.0: Gene to protein
 

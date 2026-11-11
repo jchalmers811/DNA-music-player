@@ -126,6 +126,15 @@
               <span>Instrument</span>
               <select id="instrument"></select>
             </label>
+            <label class="field">
+              <span>Percussion</span>
+              <select id="beat"></select>
+            </label>
+            <p class="hint" id="beat-about"></p>
+            <label class="field" id="drum-level-field" hidden>
+              <span>Drum volume <output id="drum-level-out">70</output>%</span>
+              <input type="range" id="drum-level" min="0" max="100" step="1" value="70" />
+            </label>
           </section>
 
           <section class="group">

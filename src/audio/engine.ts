@@ -4,6 +4,7 @@ import type { DrumHit } from '../core/drums';
 import type { NoteEvent } from '../core/types';
 import { DrumKit } from './drums';
 import { createInstrument, type Instrument, type InstrumentId } from './instruments';
+import { unlockMediaPlayback } from './unlock';
 
 export type PlayState = 'stopped' | 'playing' | 'paused';
 
@@ -94,6 +95,8 @@ export class AudioEngine {
     if (this.state === 'playing' || this.events.length === 0) return;
     // Finished pieces wait at the end (so the visuals keep the final state); play restarts them.
     if (this.state === 'paused' && this.transport.ticks >= this.totalBeats * this.transport.PPQ) this.transport.ticks = 0;
+    // Both of these must run synchronously inside the tap/click, before any await.
+    unlockMediaPlayback(); // iOS: play even when the ring/silent switch is on silent
     await Tone.start();
     this.ensureAudio();
     this.transport.start();

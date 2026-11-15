@@ -115,6 +115,8 @@ export class GeneScene {
       const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.06 }), count);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.setColorAt(0, this.white);
+      // Start every slot hidden: an untouched slot would otherwise draw a full-size shape at the origin.
+      this.hide(mesh, ...range(count));
       mesh.frustumCulled = false;
       this.orient.add(mesh);
       return mesh;
@@ -206,6 +208,11 @@ export class GeneScene {
     const n = protein ? Math.min(protein.residues.length, this.maxResidues) : 0;
     this.colors = protein ? Array.from(protein.residues.slice(0, n), (aa) => new THREE.Color(PROPERTY_COLORS[propertyClass(aa)])) : [];
     this.positions = new Float32Array(n * 3);
+    // Only slots below n are drawn from now on, so clear any left over from a longer protein.
+    this.hide(this.beads, ...range(this.beads.count));
+    this.hide(this.links, ...range(this.links.count));
+    this.beads.instanceMatrix.needsUpdate = true;
+    this.links.instanceMatrix.needsUpdate = true;
   }
 
   setVisible(visible: boolean): void {

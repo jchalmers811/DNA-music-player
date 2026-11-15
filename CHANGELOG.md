@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0: 3D scene and a simpler layout
+
+- New **3D scene** view: the gene-to-protein story as a tower. The DNA stands upright as a wiggly supercoil and feeds up through the RNA polymerase, the mRNA spirals down to an iridescent ribosome, and the protein grows upwards and folds, using the same fold estimate as the gene → protein view. A glowing floor, a dark ceiling and drifting building blocks complete it, and the camera slowly circles. Drag to look around.
+- Simpler layout: a slim sidebar with the gene, "Use your own DNA" and a one-line summary of the gene's sound. Everything else is under **More settings**, a list of settings that each open on their own page (a sheet from the bottom on phones). The view switch has moved there too.
+
 ## 0.4.0: Every gene has its own sound
 
 - Each sequence now chooses its own key, scale, instrument, drum beat and tempo, so every gene has a sound of its own. Load the same sequence again and you hear the same sound.

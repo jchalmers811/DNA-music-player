@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Prototype: tower lab 2, the wiggly-supercoil tower with a dark ceiling, eight ribosome looks (simple, cartoon,
+     glass, hologram, cloud, and spectral ghost, prism, aurora), building-block effects (plain, sparks, comet trails,
+     fireflies), protein up/down, and a motion switch (camera orbits, or ribosome anchored while the DNA spins).
+     Standalone; not part of the app build.
+     Published copy: https://claude.ai/artifact/UgkA8vumyUKasuXqwp6C9i
+     Open this file directly in a browser (needs internet for three.js and fonts). -->
+<style>body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Tower Lab: Ribosomes and Effects</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+  /* Layout: one-screen viewer. Control rows on top, the 3D stage fills the rest, caption and transport float on it. */
+  :root {
+    --bg: #0a0e16;
+    --panel: #111723;
+    --line: #243045;
+    --text: #e6ebf3;
+    --dim: #a3afc2;
+    --accent: #7dd3fc;
+    --ink: #06202e;
+    --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-head: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-ui); font-size: 14px; }
+  .app {
+    height: 100%; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 10px;
+    padding-block: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+  h1 { margin: 0; font-family: var(--font-head); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+  header p { margin: 0; color: var(--dim); font-size: 13px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+  .group { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; align-items: center; max-width: 100%; }
+  .group-label { color: var(--dim); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-right: 2px; flex-shrink: 0; }
+  .pick, .toggle {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px;
+    min-height: 44px; padding: 0 14px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    font: 500 14px var(--font-ui); cursor: pointer;
+  }
+  .pick:hover, .toggle:hover { border-color: #3a4a66; }
+  .pick[aria-pressed="true"] { background: var(--accent); color: var(--ink); border-color: var(--accent); }
+  .toggle .dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--dim); box-sizing: border-box; }
+  .toggle[aria-pressed="true"] { border-color: var(--accent); }
+  .toggle[aria-pressed="true"] .dot { background: var(--accent); border-color: var(--accent); }
+  .pick:focus-visible, .toggle:focus-visible, .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .stage {
+    position: relative; flex: 1; min-height: 300px;
+    border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 45%, #13203a 0%, #0c1220 55%, #0a0e16 100%);
+  }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  .caption {
+    position: absolute; left: 12px; bottom: 12px;
+    max-width: min(460px, calc(100% - 24px));
+    padding: 12px 14px; border-radius: 12px;
+    background: rgba(17, 23, 35, 0.86); border: 1px solid var(--line);
+    backdrop-filter: blur(6px);
+  }
+  .caption h2 { margin: 0 0 4px; font: 600 16px var(--font-head); }
+  .caption p { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.5; }
+  .tools { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; }
+  .tool {
+    min-width: 44px; height: 44px; padding: 0 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: rgba(17, 23, 35, 0.86); color: var(--text);
+    font: 500 13px var(--font-ui); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .tool:hover { border-color: #3a4a66; }
+  .hint { position: absolute; right: 12px; bottom: 12px; color: var(--dim); font-size: 12px; }
+  @media (max-width: 640px) {
+    .hint { display: none; }
+    .caption { bottom: 8px; left: 8px; max-width: calc(100% - 16px); }
+  }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Tower lab: wiggly supercoil</h1>
+    <p>Starts from the “Everything” combo. Change one thing at a time. Drag to look around.</p>
+  </header>
+  <div class="bar">
+    <div class="group" role="group" aria-label="Ribosome look">
+      <span class="group-label">Ribosome</span>
+      <button type="button" class="pick" data-rib="simple">Simple</button>
+      <button type="button" class="pick" data-rib="cartoon">Cartoon</button>
+      <button type="button" class="pick" data-rib="glass">Glass</button>
+      <button type="button" class="pick" data-rib="hologram">Hologram</button>
+      <button type="button" class="pick" data-rib="cloud">Cloud</button>
+      <button type="button" class="pick" data-rib="ghost">Ghost</button>
+      <button type="button" class="pick" data-rib="prism">Prism</button>
+      <button type="button" class="pick" data-rib="aurora">Aurora</button>
+    </div>
+    <div class="group" role="group" aria-label="Protein direction">
+      <span class="group-label">Protein</span>
+      <button type="button" class="pick" data-dir="down">Grows down</button>
+      <button type="button" class="pick" data-dir="up">Grows up (textbook)</button>
+    </div>
+    <div class="group" role="group" aria-label="Motion">
+      <span class="group-label">Motion</span>
+      <button type="button" class="pick" data-motion="orbit">Camera orbits</button>
+      <button type="button" class="pick" data-motion="spin">Ribosome still, DNA spins</button>
+    </div>
+  </div>
+  <div class="bar">
+    <div class="group" role="group" aria-label="Building blocks">
+      <span class="group-label">Blocks</span>
+      <button type="button" class="pick" data-fx="off">Off</button>
+      <button type="button" class="pick" data-fx="plain">Plain</button>
+      <button type="button" class="pick" data-fx="sparks">Sparks</button>
+      <button type="button" class="pick" data-fx="trails">Comet trails</button>
+      <button type="button" class="pick" data-fx="fireflies">Fireflies</button>
+    </div>
+    <div class="group" role="group" aria-label="Lighting">
+      <span class="group-label">Light</span>
+      <button type="button" class="toggle" id="t-dark" aria-pressed="false"><span class="dot"></span>Dark ceiling</button>
+      <button type="button" class="toggle" id="t-floor" aria-pressed="false"><span class="dot"></span>Glowing floor</button>
+    </div>
+  </div>
+  <div class="stage" id="stage">
+    <div class="tools">
+      <button class="tool" id="play" type="button">Pause</button>
+      <button class="tool" id="speed" type="button" aria-label="Speed">1×</button>
+      <button class="tool" id="reset" type="button">Reset view</button>
+    </div>
+    <div class="caption" aria-live="polite">
+      <h2 id="cap-title"></h2>
+      <p id="cap-text"></p>
+    </div>
+    <span class="hint">Drag to orbit · scroll to zoom</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const STEP = 0.07;
+  const TWIST = (2 * Math.PI) / 10.5;
+  const DNA_R = 0.2;
+  const PROTEIN_LEN = 110;
+  const RES_STEP = 0.085;
+  const BASES_PER_SEC = 9;
+  const HOLD = 5;
+  const Y_P = 1.7, Y_BOTTOM = -4.5, Y_TOP = 5.5;
+  const P = V(0, Y_P, 0);
+  const UP = V(0, 1, 0);
+  const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+
+  // ---------- DNA: wiggly supercoil ----------
+  function supercoil(s, t) {
+    const y = Y_P + s, R = 0.75 * smooth(0.4, 1.8, Math.abs(s));
+    const ph = (s > 0 ? 1.7 : -1.7) * s + 0.5 * t;
+    return V(R * Math.cos(ph), y, R * Math.sin(ph));
+  }
+  function wiggleAt(y, t) {
+    const a = smooth(0.3, 1.6, Math.abs(y - Y_P));
+    return V(a * 0.6 * Math.sin(1.1 * y - 1.4 * t), 0, a * 0.5 * Math.cos(0.8 * y - 1.0 * t + 1));
+  }
+
+  // ---------- Sequence and protein ----------
+  let seed = 7;
+  const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const SEQ = Array.from({ length: 4096 }, () => 'ACGT'[Math.floor(rand() * 4)]);
+  const seqAt = (i) => SEQ[((i % SEQ.length) + SEQ.length) % SEQ.length];
+  const BASE_COL = { A: 0x34d399, C: 0x60a5fa, G: 0xfbbf24, T: 0xf87171 };
+  const BASE_COLS = [0x34d399, 0x60a5fa, 0xfbbf24, 0xf87171];
+  const CLASS_COLS = [0xe8b26a, 0x5eead4, 0x818cf8, 0xf472b6];
+  const RES_COL = Array.from({ length: PROTEIN_LEN }, () => {
+    const r = rand();
+    return CLASS_COLS[r < 0.38 ? 0 : r < 0.72 ? 1 : r < 0.86 ? 2 : 3];
+  });
+  const FOLD = (() => {
+    const out = [];
+    let p = V(0, 0, 0), d = V(1, 0.2, 0).normalize();
+    for (let i = 0; i < PROTEIN_LEN; i++) {
+      d.add(V(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(0.7)).normalize();
+      if (p.clone().add(d.clone().multiplyScalar(RES_STEP)).length() > 0.62) d.sub(p.clone().multiplyScalar(2.2)).normalize();
+      p = p.clone().add(d.clone().multiplyScalar(RES_STEP));
+      out.push(p.clone());
+    }
+    for (let i = 0; i < PROTEIN_LEN; i++) {
+      if (Math.floor(i / 14) % 2 === 0) {
+        const a = i * 1.75;
+        out[i].add(V(Math.cos(a), Math.sin(a), Math.sin(a * 0.5)).multiplyScalar(0.06));
+      }
+    }
+    const c = out.reduce((s, q) => s.add(q), V(0, 0, 0)).multiplyScalar(1 / out.length);
+    return out.map((q) => q.sub(c));
+  })();
+
+  // ---------- Three.js setup ----------
+  const stage = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setClearColor(0x000000, 0);
+  stage.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x0b1220, 11, 28);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const key = new THREE.DirectionalLight(0xffffff, 1.25); key.position.set(3, 6, 8); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x8ab4ff, 0.8); rim.position.set(-6, -4, -6); scene.add(rim);
+  const floorLight = new THREE.PointLight(0x7dd3fc, 0, 7); floorLight.position.set(0, -4, 0); scene.add(floorLight);
+  // The dark ceiling's "light" is negative: it takes light away from whatever comes near it.
+  const darkLight = new THREE.PointLight(0xffffff, 0, 6); darkLight.position.set(0, Y_TOP - 0.3, 0); scene.add(darkLight);
+
+  const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
+  const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1);
+  const inst = (geo, n, mat) => {
+    const m = new THREE.InstancedMesh(geo, mat || new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.05 }), n);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.setColorAt(0, new THREE.Color(0xffffff));
+    m.frustumCulled = false;
+    scene.add(m);
+    return m;
+  };
+  const MAX_DNA = 700;
+  const dnaBalls = inst(sphereGeo, MAX_DNA * 2);
+  const dnaRungs = inst(cylGeo, MAX_DNA);
+  const mrnaBeads = inst(sphereGeo, 480);
+  const protBeads = inst(sphereGeo, PROTEIN_LEN);
+
+  const polymerase = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({
+    color: 0xa78bfa, emissive: 0xa78bfa, emissiveIntensity: 0.45, roughness: 0.6, transparent: true, opacity: 0.3, depthWrite: false, fog: false,
+  }));
+  polymerase.renderOrder = 2;
+  polymerase.position.copy(P);
+  polymerase.scale.setScalar(0.5);
+  scene.add(polymerase);
+
+  // ---------- Textures ----------
+  function radialTexture(stops, rings, ringColor) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+    for (const [at, color] of stops) grad.addColorStop(at, color);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = ringColor;
+    g.lineWidth = 1.2;
+    for (const r of rings) { g.beginPath(); g.arc(128, 128, r, 0, Math.PI * 2); g.stroke(); }
+    return new THREE.CanvasTexture(c);
+  }
+  const glowSprite = radialTexture([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,0.65)'], [0.6, 'rgba(255,255,255,0.12)'], [1, 'rgba(255,255,255,0)']], [], 'rgba(0,0,0,0)');
+
+  // Glowing floor
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(5.5, 64),
+    new THREE.MeshBasicMaterial({
+      map: radialTexture([[0, 'rgba(125, 211, 252, 0.55)'], [0.35, 'rgba(56, 150, 220, 0.22)'], [1, 'rgba(10, 14, 22, 0)']], [34, 64, 94], 'rgba(165, 220, 252, 0.28)'),
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+    }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = Y_BOTTOM - 0.05;
+  scene.add(floor);
+
+  // Dark ceiling: the floor's glow turned inside out, a soft pool of darkness with faint rings.
+  const ceiling = new THREE.Mesh(
+    new THREE.CircleGeometry(5.5, 64),
+    new THREE.MeshBasicMaterial({
+      map: radialTexture([[0, 'rgba(2, 3, 8, 0.97)'], [0.35, 'rgba(3, 5, 12, 0.7)'], [1, 'rgba(10, 14, 22, 0)']], [34, 64, 94], 'rgba(0, 0, 0, 0.5)'),
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+    }),
+  );
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.y = Y_TOP + 0.05;
+  ceiling.renderOrder = 3;
+  scene.add(ceiling);
+
+  // ---------- mRNA spiral ----------
+  const mrnaPts = [P.clone()];
+  for (let k = 1; k <= 9; k++) {
+    const a = k * 0.72, r = 0.45 + k * 0.17, y = 1.55 - k * 0.38;
+    mrnaPts.push(V(Math.cos(a) * r, y, Math.sin(a) * r));
+  }
+  const RIB = mrnaPts[mrnaPts.length - 1].clone();
+  const outward = V(RIB.x, 0, RIB.z).normalize();
+  mrnaPts.push(RIB.clone().add(outward.clone().multiplyScalar(1.4)).add(V(0, -0.3, 0)));
+  mrnaPts.push(RIB.clone().add(outward.clone().multiplyScalar(3.4)).add(V(0, -0.6, 0)));
+  const curve = new THREE.CatmullRomCurve3(mrnaPts, false, 'centripetal');
+  const curveLen = curve.getLength();
+  let ribArc = 0;
+  { let best = Infinity; for (let k = 0; k <= 600; k++) { const d = curve.getPointAt(k / 600).distanceTo(RIB); if (d < best) { best = d; ribArc = (k / 600) * curveLen; } } }
+  const tan = curve.getTangentAt(ribArc / curveLen).normalize();
+  const ry = UP.clone().sub(tan.clone().multiplyScalar(UP.dot(tan))).normalize();
+  const rz = tan.clone().cross(ry).normalize();
+  const ribQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(tan, ry, rz));
+  const ribLocal = (x, y, z) => RIB.clone().add(tan.clone().multiplyScalar(x)).add(ry.clone().multiplyScalar(y)).add(rz.clone().multiplyScalar(z));
+
+  // ---------- Ribosome looks ----------
+  // Each look builds one subunit as a unit-sized object; it is then placed, rotated and scaled into the small or large subunit.
+  const SMALL = { r: V(0.62, 0.3, 0.5), y: 0.3 };
+  const LARGE = { r: V(0.75, 0.48, 0.62), y: 0.45 };
+
+  const fresnel = (color, power, strength) => new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(color) }, power: { value: power }, strength: { value: strength } },
+    vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform vec3 color; uniform float power; uniform float strength; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), power) * strength; gl_FragColor = vec4(color * f, f); }',
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+
+  // Spectral looks share one shader: a view-dependent rim plus a colour pattern that moves with time.
+  const spectral = { time: { value: 0 }, pulse: { value: 0 } };
+  const SPECTRAL_FRAG = {
+    // pale rim, nearly white
+    ghost: 'vec3 c = color; float a = pow(f, 2.2) * strength;',
+    // rainbow that shifts with viewing angle and slowly with time
+    prism: 'vec3 c = 0.55 + 0.45 * cos(6.2831 * (f * 1.3 + time * 0.08 + vec3(0.0, 0.33, 0.67))); float a = (pow(f, 1.4) * 0.95 + 0.06) * strength;',
+    // bands of colour flowing across the surface
+    aurora: 'float band = 0.5 + 0.5 * sin(vPos.y * 9.0 + vPos.x * 3.0 - time * 2.2); vec3 c = 0.5 + 0.5 * cos(6.2831 * (vPos.y * 0.5 + time * 0.06 + vec3(0.25, 0.5, 0.9))); float a = (pow(band, 3.0) * (0.35 + 0.65 * f) + pow(f, 2.0) * 0.5) * strength;',
+  };
+  const spectralMat = (kind, color, strength) => new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(color) }, strength: { value: strength }, time: spectral.time, pulse: spectral.pulse },
+    vertexShader: 'varying vec3 vN; varying vec3 vV; varying vec3 vPos; void main(){ vPos = position; vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: `uniform vec3 color; uniform float strength; uniform float time; uniform float pulse; varying vec3 vN; varying vec3 vV; varying vec3 vPos;
+      void main(){ float f = 1.0 - abs(dot(normalize(vN), normalize(vV))); ${SPECTRAL_FRAG[kind]} a *= 1.0 + 0.6 * pulse; gl_FragColor = vec4(c * a, a); }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+
+  const LOOKS = {
+    ghost: {
+      text: 'Ghost: a pale glowing shell that keeps sending out fading echoes of itself, like ripples.',
+      make: (small) => {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(sphereGeo, spectralMat('ghost', small ? 0xe0f2fe : 0xede9fe, 1.2)));
+        const echoes = [0, 1, 2].map(() => {
+          const m = new THREE.Mesh(sphereGeo, spectralMat('ghost', 0xc7d2fe, 0.6));
+          g.add(m);
+          return m;
+        });
+        g.userData.tick = (t) => {
+          echoes.forEach((m, k) => {
+            const phase = (t * 0.45 + k / 3) % 1;
+            m.scale.setScalar(1 + phase * 0.5);
+            m.material.uniforms.strength.value = 0.7 * (1 - phase) * (1 - phase);
+          });
+        };
+        return g;
+      },
+    },
+    prism: {
+      text: 'Prism: an iridescent shell whose colours run through the rainbow as you look around it.',
+      make: () => new THREE.Mesh(sphereGeo, spectralMat('prism', 0xffffff, 1.1)),
+    },
+    aurora: {
+      text: 'Aurora: bands of shifting colour flow across the subunits like the northern lights.',
+      make: () => new THREE.Mesh(sphereGeo, spectralMat('aurora', 0xffffff, 1.0)),
+    },
+    simple: {
+      text: 'Simple: today’s two soft, see-through blobs.',
+      make: (small) => {
+        const c = small ? 0xfde4b8 : 0xfcd9a0;
+        const m = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.75, roughness: 0.6, transparent: true, opacity: 0.38, depthWrite: false, fog: false }));
+        m.renderOrder = 2;
+        return m;
+      },
+    },
+    cartoon: {
+      text: 'Cartoon: flat-shaded shapes with dark outlines, like a textbook drawing. A lavender small subunit and a sky-blue large one.',
+      make: (small) => {
+        const g = new THREE.Group();
+        const tones = new Uint8Array([90, 170, 255]);
+        const grad = new THREE.DataTexture(tones, 3, 1, THREE.LuminanceFormat);
+        grad.minFilter = grad.magFilter = THREE.NearestFilter;
+        grad.needsUpdate = true;
+        g.add(new THREE.Mesh(sphereGeo, new THREE.MeshToonMaterial({ color: small ? 0xc4b5fd : 0x93c5fd, gradientMap: grad })));
+        const outline = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x05070c, side: THREE.BackSide }));
+        outline.scale.setScalar(1.07);
+        g.add(outline);
+        return g;
+      },
+    },
+    glass: {
+      text: 'Glass: clear shells with a glowing rim, so you can see the mRNA being read and the protein starting inside.',
+      make: (small) => {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ color: 0xdbeafe, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.1, depthWrite: false })));
+        g.add(new THREE.Mesh(sphereGeo, fresnel(small ? 0xa5f3fc : 0xc4b5fd, 2.4, 1.3)));
+        return g;
+      },
+    },
+    hologram: {
+      text: 'Hologram: a glowing wireframe that flares each time a codon is read.',
+      make: (small) => {
+        const g = new THREE.Group();
+        const wire = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1, 2)),
+          new THREE.LineBasicMaterial({ color: small ? 0x67e8f9 : 0x5eead4, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+        g.add(wire);
+        g.add(new THREE.Mesh(sphereGeo, fresnel(0x22d3ee, 3, 0.6)));
+        g.userData.pulse = (p) => { wire.material.opacity = 0.4 + 0.6 * p; };
+        return g;
+      },
+    },
+    cloud: {
+      text: 'Cloud: each subunit is a soft swarm of tiny warm lights that shimmers and swells on every codon.',
+      make: (small) => {
+        const n = small ? 700 : 1100;
+        const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), base = new Float32Array(n * 3);
+        const c1 = new THREE.Color(small ? 0xfde4b8 : 0xfcd9a0), c2 = new THREE.Color(small ? 0xf9a8d4 : 0xfdba74);
+        for (let k = 0; k < n; k++) {
+          let u;
+          do { u = V(rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1); } while (u.length() > 1);
+          u.multiplyScalar(0.55 + 0.45 * Math.cbrt(u.length()));
+          base.set([u.x, u.y, u.z], k * 3);
+          const c = c1.clone().lerp(c2, rand());
+          col.set([c.r, c.g, c.b], k * 3);
+        }
+        pos.set(base);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.06, map: glowSprite, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+        pts.frustumCulled = false;
+        pts.userData.tick = (t, p) => {
+          for (let k = 0; k < n; k++) {
+            const j = k * 3, w = 0.025 * (1 + 2 * p);
+            pos[j] = base[j] * (1 + 0.06 * p) + Math.sin(t * 2.1 + k) * w;
+            pos[j + 1] = base[j + 1] * (1 + 0.06 * p) + Math.cos(t * 1.7 + k * 1.3) * w;
+            pos[j + 2] = base[j + 2] * (1 + 0.06 * p) + Math.sin(t * 1.9 + k * 0.7) * w;
+          }
+          geo.attributes.position.needsUpdate = true;
+        };
+        return pts;
+      },
+    },
+  };
+  const lookObjects = {};
+  for (const [id, look] of Object.entries(LOOKS)) {
+    lookObjects[id] = { small: look.make(true), large: look.make(false) };
+    for (const o of [lookObjects[id].small, lookObjects[id].large]) { o.quaternion.copy(ribQ); o.visible = false; scene.add(o); }
+  }
+
+  let ribStyle = 'cartoon', grow = 'down';
+  let exit, growDir, gPerp1, gPerp2, foldCenter;
+  function setupRibosome() {
+    const side = grow === 'up' ? 1 : -1; // where the large subunit sits relative to the mRNA
+    for (const [id, o] of Object.entries(lookObjects)) {
+      o.small.position.copy(ribLocal(0, -side * SMALL.y, 0)); o.small.scale.copy(SMALL.r);
+      o.large.position.copy(ribLocal(0, side * LARGE.y, 0)); o.large.scale.copy(LARGE.r);
+      o.small.visible = o.large.visible = id === ribStyle;
+    }
+    exit = ribLocal(0, side * 0.85, 0);
+    growDir = grow === 'up'
+      ? V(outward.x * 0.45, 1, outward.z * 0.45).normalize()
+      : V(outward.x * 0.3, -1, outward.z * 0.3).normalize();
+    gPerp1 = growDir.clone().cross(V(1, 0, 0)).normalize();
+    gPerp2 = growDir.clone().cross(gPerp1).normalize();
+    foldCenter = exit.clone().add(growDir.clone().multiplyScalar(1.0));
+  }
+
+  // ---------- Building blocks ----------
+  const BLOCKS = 280;
+  const blockMesh = inst(sphereGeo, BLOCKS, new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.05, emissive: 0x111111 }));
+  const blocks = Array.from({ length: BLOCKS }, (_, k) => ({ p: V(0, 0, 0), v: V(0, 0, 0), col: new THREE.Color(BASE_COLS[k % 4]), life: 1, phase: rand() * 10, rate: 0.6 + rand() * 1.4, trail: [] }));
+  const spawn = (b, anywhere) => {
+    const a = rand() * Math.PI * 2, r = anywhere ? 0.8 + rand() * 5.5 : 4 + rand() * 2.5;
+    b.p.set(Math.cos(a) * r, Y_BOTTOM + 0.3 + rand() * (Y_TOP - Y_BOTTOM - 0.6), Math.sin(a) * r);
+    b.v.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(0.15);
+    b.life = 1;
+    b.trail = [];
+  };
+  blocks.forEach((b) => spawn(b, true));
+
+  const pointsLayer = (n, size) => {
+    const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size, map: glowSprite, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    pts.frustumCulled = false;
+    scene.add(pts);
+    return { pts, pos, col, geo, n };
+  };
+  const TRAIL = 12;
+  const trailLayer = pointsLayer(BLOCKS * TRAIL, 0.09);
+  const fireflyLayer = pointsLayer(BLOCKS, 0.32);
+  const SPARKS = 600;
+  const sparkLayer = pointsLayer(SPARKS, 0.22);
+  const sparks = Array.from({ length: SPARKS }, () => ({ p: V(0, -99, 0), v: V(0, 0, 0), life: 0, col: new THREE.Color() }));
+  let sparkNext = 0;
+  function burst(at, color, count) {
+    for (let k = 0; k < count; k++) {
+      const s = sparks[sparkNext];
+      sparkNext = (sparkNext + 1) % SPARKS;
+      s.p.copy(at);
+      s.v.set(rand() - 0.5, rand() - 0.3, rand() - 0.5).normalize().multiplyScalar(1.2 + rand() * 2.4);
+      s.life = 0.5 + rand() * 0.5;
+      s.col.copy(color).lerp(new THREE.Color(0xffffff), 0.6);
+    }
+  }
+
+  let fx = 'sparks';
+  const FX_TEXT = {
+    off: 'No building blocks.',
+    plain: 'Plain: coloured beads drifting in and being taken up by the polymerase.',
+    sparks: 'Sparks: each block that the polymerase uses up goes off in a small burst of sparks.',
+    trails: 'Comet trails: blocks stream in from far away, each leaving a glowing tail.',
+    fireflies: 'Fireflies: soft glowing blocks that blink on and off as they swirl around the tower.',
+  };
+
+  function drawBlocks(dt, t) {
+    const showSpheres = fx === 'plain' || fx === 'sparks' || fx === 'trails';
+    blockMesh.visible = showSpheres;
+    trailLayer.pts.visible = fx === 'trails';
+    fireflyLayer.pts.visible = fx === 'fireflies';
+    sparkLayer.pts.visible = fx === 'sparks';
+    if (fx === 'off') return;
+    const reach = fx === 'trails' ? 6 : fx === 'fireflies' ? 1.3 : 2.6;
+    const pullStrength = fx === 'trails' ? 2.8 : 1.6;
+    for (let k = 0; k < BLOCKS; k++) {
+      const b = blocks[k];
+      const toP = P.clone().sub(b.p);
+      const d = toP.length();
+      if (d < reach) b.v.add(toP.normalize().multiplyScalar(dt * pullStrength / Math.max(0.4, d)));
+      if (fx === 'trails' && d < reach) b.v.add(V(-toP.z, 0, toP.x).multiplyScalar(dt * 0.6)); // curve in
+      if (fx === 'fireflies') {
+        b.v.add(V(Math.sin(b.p.y * 1.3 + t * 0.7), Math.sin(b.p.x * 1.1 + t * 0.5) * 0.5, Math.cos(b.p.y * 1.2 - t * 0.6)).multiplyScalar(dt * 0.12));
+      } else if (d >= reach) b.v.add(V(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(dt * 0.12));
+      b.v.multiplyScalar(d < reach ? 0.985 : 0.995);
+      b.p.add(b.v.clone().multiplyScalar(dt));
+      if (d < 0.35) {
+        if (b.life === 1 && fx === 'sparks') burst(b.p, b.col, 24);
+        b.life -= dt * 4;
+      }
+      if (b.life <= 0 || b.p.length() > 10 || b.p.y < Y_BOTTOM || b.p.y > Y_TOP) spawn(b, false);
+      if (fx === 'trails') {
+        b.trail.unshift(b.p.clone());
+        if (b.trail.length > TRAIL) b.trail.pop();
+      }
+      // Blocks near the dark ceiling dim.
+      const dim = ceiling.visible ? 1 - 0.85 * smooth(Y_TOP - 2.2, Y_TOP, b.p.y) : 1;
+      if (showSpheres) {
+        place(blockMesh, k, b.p, 0.032 * Math.max(0, b.life));
+        blockMesh.setColorAt(k, col.copy(b.col).multiplyScalar(dim));
+      }
+      if (fx === 'trails') {
+        for (let j = 0; j < TRAIL; j++) {
+          const q = b.trail[j] || b.p, idx = (k * TRAIL + j) * 3;
+          trailLayer.pos[idx] = q.x; trailLayer.pos[idx + 1] = q.y; trailLayer.pos[idx + 2] = q.z;
+          const f = (1 - j / TRAIL) * 0.8 * dim * Math.min(1, b.v.length() * 2.5);
+          trailLayer.col[idx] = b.col.r * f; trailLayer.col[idx + 1] = b.col.g * f; trailLayer.col[idx + 2] = b.col.b * f;
+        }
+      }
+      if (fx === 'fireflies') {
+        const blink = Math.pow(Math.max(0, Math.sin(t * b.rate + b.phase)), 6);
+        const f = (0.12 + 0.88 * blink) * dim * Math.max(0, b.life);
+        const idx = k * 3;
+        fireflyLayer.pos[idx] = b.p.x; fireflyLayer.pos[idx + 1] = b.p.y; fireflyLayer.pos[idx + 2] = b.p.z;
+        fireflyLayer.col[idx] = b.col.r * f; fireflyLayer.col[idx + 1] = b.col.g * f; fireflyLayer.col[idx + 2] = b.col.b * f;
+      }
+    }
+    if (fx === 'sparks') {
+      for (let k = 0; k < SPARKS; k++) {
+        const s = sparks[k], idx = k * 3;
+        if (s.life > 0) {
+          s.life -= dt;
+          s.v.multiplyScalar(0.93);
+          s.p.add(s.v.clone().multiplyScalar(dt));
+        }
+        const f = Math.max(0, s.life) * 1.6;
+        sparkLayer.pos[idx] = s.p.x; sparkLayer.pos[idx + 1] = s.p.y; sparkLayer.pos[idx + 2] = s.p.z;
+        sparkLayer.col[idx] = s.col.r * f; sparkLayer.col[idx + 1] = s.col.g * f; sparkLayer.col[idx + 2] = s.col.b * f;
+      }
+    }
+    for (const l of [trailLayer, fireflyLayer, sparkLayer]) {
+      l.geo.attributes.position.needsUpdate = true;
+      l.geo.attributes.color.needsUpdate = true;
+    }
+    blockMesh.instanceMatrix.needsUpdate = true;
+    if (blockMesh.instanceColor) blockMesh.instanceColor.needsUpdate = true;
+  }
+
+  // ---------- State ----------
+  let pos = ribArc / STEP - 4, hold = 0, time = 0, pulse = 0, lastCodon = -1;
+  let playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches, speed = 1;
+  let yaw = 0, pitch = 0, zoom = 1, orbitAngle = 0;
+  // "orbit": the camera circles everything. "spin": the camera holds still and the DNA turns on the tower's axis,
+  // so the ribosome, mRNA and polymerase stay put on screen.
+  let motion = 'orbit', dnaSpin = 0;
+  const CAM = V(0, 1.4, 13.4), TARGET = V(0, 0.6, 0);
+
+  // ---------- Helpers ----------
+  const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s4 = V(1, 1, 1), col = new THREE.Color(), white = new THREE.Color(0xffffff);
+  const tmpA = V(0, 0, 0), tmpB = V(0, 0, 0);
+  function place(mesh, i, p, r) { m4.compose(p, q4.identity(), s4.setScalar(r)); mesh.setMatrixAt(i, m4); }
+  function hideAt(mesh, i) { m4.makeScale(0, 0, 0); mesh.setMatrixAt(i, m4); }
+  function cylinder(mesh, i, a, b, r) {
+    const len = a.distanceTo(b);
+    if (len < 1e-5) return hideAt(mesh, i);
+    tmpA.copy(b).sub(a).normalize();
+    q4.setFromUnitVectors(UP, tmpA);
+    m4.compose(tmpB.copy(a).add(b).multiplyScalar(0.5), q4, s4.set(r, len, r));
+    mesh.setMatrixAt(i, m4);
+  }
+  /** 0 away from the dark ceiling, rising to 1 right under it. */
+  const dark = (y) => (ceiling.visible ? smooth(Y_TOP - 2.4, Y_TOP, y) : 0);
+
+  // ---------- DNA ----------
+  function drawDna(t) {
+    const line = [];
+    const iTop = Math.floor(pos - (Y_TOP - Y_P) / STEP);
+    const iBottom = Math.ceil(pos + (Y_P - Y_BOTTOM) / STEP);
+    for (let i = iTop; i <= iBottom && line.length < MAX_DNA; i++) {
+      const s = (pos - i) * STEP;
+      line.push({ i, s, c: supercoil(s, t).add(wiggleAt(Y_P + s, t)) });
+    }
+    const n = line.length;
+    const tangents = line.map((b, j) => line[Math.min(n - 1, j + 1)].c.clone().sub(line[Math.max(0, j - 1)].c).normalize());
+    let k0 = line.findIndex((b) => b.s <= 0);
+    if (k0 < 0) k0 = n - 1;
+    const normals = new Array(n);
+    normals[k0] = tangents[k0].clone().cross(V(1, 0, 0)).normalize();
+    const carry = (from, to) => {
+      const q = new THREE.Quaternion().setFromUnitVectors(tangents[from], tangents[to]);
+      const nn = normals[from].clone().applyQuaternion(q);
+      nn.sub(tangents[to].clone().multiplyScalar(nn.dot(tangents[to]))).normalize();
+      normals[to] = nn;
+    };
+    for (let j = k0 + 1; j < n; j++) carry(j - 1, j);
+    for (let j = k0 - 1; j >= 0; j--) carry(j + 1, j);
+
+    const black = new THREE.Color(0x05070c);
+    for (let j = 0; j < n; j++) {
+      const { i, s, c } = line[j];
+      const tgt = tangents[j], nrm = normals[j], bin = tgt.clone().cross(nrm);
+      const fade = smooth(0, 0.8, Math.min(c.y - Y_BOTTOM, Y_TOP - c.y));
+      const k = dark(c.y);
+      const open = 1 - smooth(0.28, 0.46, Math.abs(s));
+      const r = DNA_R * (1 + open * 0.9);
+      const th = i * TWIST;
+      const pa = c.clone().add(nrm.clone().multiplyScalar(Math.cos(th) * r)).add(bin.clone().multiplyScalar(Math.sin(th) * r));
+      const pb = c.clone().add(nrm.clone().multiplyScalar(Math.cos(th + 2.4) * r)).add(bin.clone().multiplyScalar(Math.sin(th + 2.4) * r));
+      if (dnaSpin) { pa.applyAxisAngle(UP, dnaSpin); pb.applyAxisAngle(UP, dnaSpin); }
+      place(dnaBalls, 2 * j, pa, 0.045 * fade);
+      place(dnaBalls, 2 * j + 1, pb, 0.045 * fade);
+      dnaBalls.setColorAt(2 * j, col.setHex(0xa5b4cf).lerp(black, k * 0.9));
+      dnaBalls.setColorAt(2 * j + 1, col.setHex(0x7f8db0).lerp(black, k * 0.9));
+      if (open > 0.3 || fade <= 0) hideAt(dnaRungs, j);
+      else cylinder(dnaRungs, j, pa, pb, 0.017 * fade);
+      dnaRungs.setColorAt(j, col.setHex(BASE_COL[seqAt(i)]).lerp(black, k * 0.9));
+    }
+    dnaBalls.count = n * 2;
+    dnaRungs.count = n;
+  }
+
+  function drawMrna() {
+    const readBase = pos - ribArc / STEP;
+    const codonStart = Math.floor(readBase / 3) * 3;
+    if (codonStart !== lastCodon) { lastCodon = codonStart; pulse = 1; }
+    let n = 0;
+    for (let j = Math.max(0, Math.ceil(pos - curveLen / STEP)); j <= Math.floor(pos) && n < 480; j++) {
+      const arc = (pos - j) * STEP;
+      if (arc < 0 || arc > curveLen) continue;
+      const reading = j >= codonStart && j < codonStart + 3;
+      place(mrnaBeads, n, curve.getPointAt(arc / curveLen), (reading ? 0.06 : 0.035) * smooth(0, 1.2, curveLen - arc));
+      col.setHex(BASE_COL[seqAt(j)]);
+      if (reading) col.lerp(white, 0.45);
+      mrnaBeads.setColorAt(n, col);
+      n++;
+    }
+    mrnaBeads.count = n;
+  }
+
+  function drawProtein() {
+    const made = Math.max(0, Math.min(PROTEIN_LEN, Math.floor((pos - ribArc / STEP) / 3)));
+    const spin = new THREE.Quaternion().setFromAxisAngle(growDir, time * 0.25);
+    for (let i = 0; i < made; i++) {
+      const age = made - 1 - i + hold * 14;
+      const f = smooth(3, 30, age);
+      const ext = exit.clone()
+        .add(growDir.clone().multiplyScalar(0.05 + Math.min(age, 40) * RES_STEP))
+        .add(gPerp1.clone().multiplyScalar(Math.sin(age * 0.9) * 0.03))
+        .add(gPerp2.clone().multiplyScalar(Math.cos(age * 0.7) * 0.03));
+      const p = ext.lerp(FOLD[i].clone().applyQuaternion(spin).add(foldCenter), f);
+      const newest = i === made - 1 && hold === 0;
+      place(protBeads, i, p, newest ? 0.075 : 0.052);
+      col.setHex(RES_COL[i]);
+      if (newest) col.lerp(white, 0.5);
+      protBeads.setColorAt(i, col);
+    }
+    protBeads.count = made;
+  }
+
+  // ---------- Camera ----------
+  const camPos = V(0, 0, 11), camTarget = TARGET.clone();
+  function desiredCamera() {
+    const off = CAM.clone().sub(TARGET);
+    const right = off.clone().cross(UP).normalize();
+    off.applyAxisAngle(right, pitch);
+    off.applyAxisAngle(UP, yaw + orbitAngle);
+    off.multiplyScalar(zoom);
+    return TARGET.clone().add(off);
+  }
+
+  // ---------- Loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const sdt = playing ? dt * speed : 0;
+    if (playing) {
+      time += sdt;
+      if (Math.floor((pos - ribArc / STEP) / 3) >= PROTEIN_LEN) {
+        hold += sdt;
+        if (hold > HOLD) { pos = ribArc / STEP - 4; hold = 0; }
+      } else pos += sdt * BASES_PER_SEC;
+      if (motion === 'orbit') orbitAngle += sdt * 0.14;
+      else dnaSpin += sdt * 0.45;
+      pulse = Math.max(0, pulse - sdt * 3);
+    }
+    spectral.time.value = time;
+    spectral.pulse.value = pulse;
+    drawBlocks(sdt, time);
+    drawDna(time);
+    drawMrna();
+    drawProtein();
+    const o = lookObjects[ribStyle];
+    for (const part of [o.small, o.large]) {
+      if (part.userData.pulse) part.userData.pulse(pulse);
+      if (part.userData.tick) part.userData.tick(time, pulse);
+    }
+    for (const m of [dnaBalls, dnaRungs, mrnaBeads, protBeads]) {
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
+    const k = 1 - Math.exp(-dt * 4);
+    camPos.lerp(desiredCamera(), k);
+    camTarget.lerp(TARGET, k);
+    camera.position.copy(camPos);
+    camera.lookAt(camTarget);
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage);
+
+  // ---------- Controls ----------
+  const capTitle = document.getElementById('cap-title');
+  const capText = document.getElementById('cap-text');
+  const DIR_TEXT = {
+    down: 'The protein leaves from underneath and grows downwards.',
+    up: 'Textbook orientation: small subunit under the mRNA, large on top, so the protein comes out of the top and grows upwards.',
+  };
+  const NAMES = { simple: 'Simple', cartoon: 'Cartoon', glass: 'Glass', hologram: 'Hologram', cloud: 'Cloud', ghost: 'Ghost', prism: 'Prism', aurora: 'Aurora' };
+  const MOTION_TEXT = {
+    orbit: '',
+    spin: 'The camera holds still and the DNA turns on its own axis, so the ribosome stays anchored in one spot.',
+  };
+  const FX_NAMES = { off: 'no blocks', plain: 'plain blocks', sparks: 'sparks', trails: 'comet trails', fireflies: 'fireflies' };
+  function caption() {
+    capTitle.textContent = `${NAMES[ribStyle]} ribosome · grows ${grow} · ${FX_NAMES[fx]}`;
+    capText.textContent = `${LOOKS[ribStyle].text} ${DIR_TEXT[grow]} ${FX_TEXT[fx]} ${MOTION_TEXT[motion]}`.trim();
+  }
+  function sync() {
+    for (const b of document.querySelectorAll('[data-motion]')) b.setAttribute('aria-pressed', String(b.dataset.motion === motion));
+    for (const b of document.querySelectorAll('[data-rib]')) b.setAttribute('aria-pressed', String(b.dataset.rib === ribStyle));
+    for (const b of document.querySelectorAll('[data-dir]')) b.setAttribute('aria-pressed', String(b.dataset.dir === grow));
+    for (const b of document.querySelectorAll('[data-fx]')) b.setAttribute('aria-pressed', String(b.dataset.fx === fx));
+    setupRibosome();
+    caption();
+    try { localStorage.setItem('tower-lab-2', JSON.stringify({ ribStyle, grow, fx, motion })); } catch (e) { /* not remembered */ }
+  }
+  for (const b of document.querySelectorAll('[data-motion]')) b.addEventListener('click', () => {
+    motion = b.dataset.motion;
+    if (motion === 'spin') orbitAngle = 0; // settle the camera where the ribosome faces you
+    sync();
+  });
+  for (const b of document.querySelectorAll('[data-rib]')) b.addEventListener('click', () => { ribStyle = b.dataset.rib; sync(); });
+  for (const b of document.querySelectorAll('[data-dir]')) b.addEventListener('click', () => { grow = b.dataset.dir; sync(); });
+  for (const b of document.querySelectorAll('[data-fx]')) b.addEventListener('click', () => {
+    fx = b.dataset.fx;
+    blocks.forEach((bl) => (bl.trail = []));
+    sync();
+  });
+
+  function bindToggle(id, apply) {
+    const btn = document.getElementById(id);
+    const set = (on) => { btn.setAttribute('aria-pressed', String(on)); apply(on); };
+    btn.addEventListener('click', () => set(btn.getAttribute('aria-pressed') !== 'true'));
+    return set;
+  }
+  const setDark = bindToggle('t-dark', (on) => { ceiling.visible = on; darkLight.intensity = on ? -0.9 : 0; });
+  const setFloor = bindToggle('t-floor', (on) => { floor.visible = on; floorLight.intensity = on ? 0.9 : 0; });
+
+  const playBtn = document.getElementById('play');
+  const syncPlay = () => { playBtn.textContent = playing ? 'Pause' : 'Play'; };
+  playBtn.addEventListener('click', () => { playing = !playing; syncPlay(); });
+  const speeds = [0.5, 1, 2];
+  const speedBtn = document.getElementById('speed');
+  speedBtn.addEventListener('click', () => { speed = speeds[(speeds.indexOf(speed) + 1) % speeds.length]; speedBtn.textContent = `${speed}×`; });
+  document.getElementById('reset').addEventListener('click', () => { yaw = 0; pitch = 0; zoom = 1; });
+
+  const canvas = renderer.domElement;
+  let drag = null;
+  canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    yaw -= (e.clientX - drag.x) * 0.006;
+    pitch = Math.max(-1.2, Math.min(1.2, pitch - (e.clientY - drag.y) * 0.006));
+    drag = { x: e.clientX, y: e.clientY };
+  });
+  const endDrag = () => (drag = null);
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoom = Math.max(0.4, Math.min(2.2, zoom * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+
+  try {
+    const saved = JSON.parse(localStorage.getItem('tower-lab-2') || '{}');
+    if (LOOKS[saved.ribStyle]) ribStyle = saved.ribStyle;
+    if (['down', 'up'].includes(saved.grow)) grow = saved.grow;
+    if (FX_TEXT[saved.fx]) fx = saved.fx;
+    if (MOTION_TEXT[saved.motion] !== undefined) motion = saved.motion;
+  } catch (e) { /* defaults */ }
+  setDark(true);
+  setFloor(true);
+  sync();
+  camPos.copy(desiredCamera());
+  syncPlay();
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>

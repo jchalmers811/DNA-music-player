@@ -2,7 +2,7 @@
 
 Play DNA as music while a 3D double helix scrolls and pulses in time. Everything runs locally in the browser; no sequence data is uploaded.
 
-See [the design write-up](DNA%20Music%20Player%20App%20Design%20Write-up.md) for the full plan and [the changelog](CHANGELOG.md) for what's in each version. Current version: 0.4.0 (each sequence has its own sound).
+See [the design write-up](DNA%20Music%20Player%20App%20Design%20Write-up.md) for the full plan and [the changelog](CHANGELOG.md) for what's in each version. Current version: 0.5.0 (3D scene and a simpler layout).
 
 ## Commands
 

@@ -1,8 +1,10 @@
 import * as THREE from 'three';
-import type { FoldResult } from '../core/fold';
 import { complement } from '../core/genetics';
-import { propertyClass, type PropertyClass } from '../core/protein';
 import { BASE_COLORS, type HelixHighlight } from './helix';
+import { ProteinChain, type SceneProtein } from './proteinChain';
+import { hideInstances, makeInstanced, markDirty, setCylinder, smoothstep } from './sceneUtils';
+
+export { PROPERTY_COLORS, type SceneProtein } from './proteinChain';
 
 /**
  * The gene-to-protein view: DNA → RNA polymerase → mRNA → ribosome → protein.
@@ -15,13 +17,6 @@ import { BASE_COLORS, type HelixHighlight } from './helix';
  * the whole layout turns 90° so the flow runs bottom → top.
  */
 
-export const PROPERTY_COLORS: Record<PropertyClass, number> = {
-  hydrophobic: 0xe8b26a,
-  polar: 0x5eead4,
-  positive: 0x818cf8,
-  negative: 0xf472b6,
-};
-
 const TWIST = (2 * Math.PI) / 10.5;
 const DNA_Y = 3.0;
 const POL_X = 3.6;
@@ -32,15 +27,7 @@ const STAGE = new THREE.Vector3(-5.9, -2.85, 0);
 const STEP = 0.2; // scene units per base, DNA and mRNA
 const DNA_WINDOW = 96; // bases drawn around the polymerase
 const MRNA_TAIL = 30; // bases drawn after the ribosome
-const ANGSTROM = 0.055; // scene units per ångström for the protein
-const STAGED_SCALE = 1.2;
 const BOUNDS = { minX: -8.6, maxX: 6.8, minY: -5.4, maxY: 4.3 }; // landscape layout extent
-
-export interface SceneProtein {
-  residues: string;
-  fold: FoldResult;
-  stopFound: boolean;
-}
 
 export class GeneScene {
   readonly canvas: HTMLCanvasElement;
@@ -52,19 +39,14 @@ export class GeneScene {
   private readonly dnaRungs: THREE.InstancedMesh;
   private readonly mrnaBeads: THREE.InstancedMesh;
   private readonly mrnaLinks: THREE.InstancedMesh;
-  private readonly beads: THREE.InstancedMesh;
-  private readonly links: THREE.InstancedMesh;
+  private readonly chain: ProteinChain;
   private readonly labels: { el: HTMLElement; at: () => THREE.Vector3 | null }[] = [];
   private readonly mrnaPath: THREE.CurvePath<THREE.Vector3>;
   private readonly ribDist: number; // path distance from polymerase exit to ribosome
-  private readonly maxResidues: number;
   private readonly resizeObserver: ResizeObserver;
 
   private seq = '';
   private frameStart = 0;
-  private protein: SceneProtein | null = null;
-  private colors: THREE.Color[] = [];
-  private released = 0;
   private yaw = 0;
   private pitch = 0.25;
   private dragging: { x: number; y: number } | null = null;
@@ -72,29 +54,19 @@ export class GeneScene {
   // scratch
   private readonly m = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
-  private readonly qa = new THREE.Quaternion();
-  private readonly qs = new THREE.Quaternion();
-  private readonly e = new THREE.Euler();
   private readonly a = new THREE.Vector3();
   private readonly b = new THREE.Vector3();
   private readonly v = new THREE.Vector3();
-  private readonly anchor = new THREE.Vector3();
-  private readonly centroid = new THREE.Vector3();
   private readonly center = new THREE.Vector3();
   private readonly scale = new THREE.Vector3();
   private readonly col = new THREE.Color();
   private readonly white = new THREE.Color(0xffffff);
-  private positions = new Float32Array(0);
-  private static readonly UP = new THREE.Vector3(0, 1, 0);
-  private static readonly ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
-  private static readonly AWAY = new THREE.Vector3(-0.5, -0.85, 0.2).normalize();
 
   constructor(
     private readonly container: HTMLElement,
     labelLayer: HTMLElement,
     opts: { small: boolean },
   ) {
-    this.maxResidues = opts.small ? 800 : 1500;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, opts.small ? 1.5 : 2));
     this.renderer.setClearColor(0x000000, 0);
@@ -111,18 +83,8 @@ export class GeneScene {
 
     const sphere = new THREE.SphereGeometry(1, 14, 10);
     const cyl = new THREE.CylinderGeometry(1, 1, 1, 8, 1);
-    const instanced = (geo: THREE.BufferGeometry, count: number) => {
-      const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.06 }), count);
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.setColorAt(0, this.white);
-      // Start every slot hidden: an untouched slot would otherwise draw a full-size shape at the origin.
-      this.hide(mesh, ...range(count));
-      mesh.frustumCulled = false;
-      this.orient.add(mesh);
-      return mesh;
-    };
-    this.dnaSpheres = instanced(sphere, DNA_WINDOW * 2);
-    this.dnaRungs = instanced(cyl, DNA_WINDOW * 2);
+    this.dnaSpheres = makeInstanced(sphere, DNA_WINDOW * 2, this.orient);
+    this.dnaRungs = makeInstanced(cyl, DNA_WINDOW * 2, this.orient);
 
     // mRNA path: down out of the polymerase, round a corner, left through the ribosome and beyond.
     const p = (x: number, y: number) => new THREE.Vector3(x, y, 0);
@@ -133,11 +95,16 @@ export class GeneScene {
     this.mrnaPath.add(new THREE.LineCurve3(p(RIB_X, MRNA_Y), p(RIB_X - MRNA_TAIL * STEP - 2, MRNA_Y)));
     this.ribDist = this.mrnaPath.getCurveLengths()[2];
     const mrnaCount = Math.ceil(this.ribDist / STEP) + MRNA_TAIL + 4;
-    this.mrnaBeads = instanced(sphere, mrnaCount);
-    this.mrnaLinks = instanced(cyl, mrnaCount);
+    this.mrnaBeads = makeInstanced(sphere, mrnaCount, this.orient);
+    this.mrnaLinks = makeInstanced(cyl, mrnaCount, this.orient);
 
-    this.beads = instanced(sphere, this.maxResidues);
-    this.links = instanced(cyl, this.maxResidues);
+    this.chain = new ProteinChain(this.orient, sphere, cyl, opts.small ? 800 : 1500, {
+      exit: EXIT,
+      away: new THREE.Vector3(-0.5, -0.85, 0.2).normalize(),
+      stage: STAGE,
+      angstrom: 0.055,
+      stagedScale: 1.2,
+    });
 
     // Machines: soft translucent bodies.
     const blob = (color: number, opacity: number, pos: THREE.Vector3, s: THREE.Vector3, glow = 0.35) => {
@@ -176,7 +143,9 @@ export class GeneScene {
     label('RNA polymerase', () => new THREE.Vector3(POL_X, DNA_Y + 1.15, 0));
     label('mRNA', () => new THREE.Vector3(POL_X - 2.2, MRNA_Y - 0.42, 0));
     label('Ribosome', () => new THREE.Vector3(RIB_X + 1.75, MRNA_Y + 0.55, 0));
-    label('Protein', () => (this.protein && this.protein.residues.length ? this.proteinLabelPoint() : null));
+    label('Protein', () =>
+      this.chain.hasResidues ? this.chain.labelPoint(new THREE.Vector3(1.1, -0.9, 0), new THREE.Vector3(2.7, 0.4, 0)) : null,
+    );
 
     // Drag to turn the finished protein.
     this.canvas.addEventListener('pointerdown', (e) => {
@@ -204,15 +173,7 @@ export class GeneScene {
   }
 
   setProtein(protein: SceneProtein | null): void {
-    this.protein = protein;
-    const n = protein ? Math.min(protein.residues.length, this.maxResidues) : 0;
-    this.colors = protein ? Array.from(protein.residues.slice(0, n), (aa) => new THREE.Color(PROPERTY_COLORS[propertyClass(aa)])) : [];
-    this.positions = new Float32Array(n * 3);
-    // Only slots below n are drawn from now on, so clear any left over from a longer protein.
-    this.hide(this.beads, ...range(this.beads.count));
-    this.hide(this.links, ...range(this.links.count));
-    this.beads.instanceMatrix.needsUpdate = true;
-    this.links.instanceMatrix.needsUpdate = true;
+    this.chain.setProtein(protein);
   }
 
   setVisible(visible: boolean): void {
@@ -223,21 +184,14 @@ export class GeneScene {
     if (visible) this.resize();
   }
 
-  /** How far translation has got, in residues (fractional), from a base position. */
-  private residuesMade(pos: number): number {
-    return (pos - this.frameStart) / 3;
-  }
-
   render(pos: number, hl: HelixHighlight | null, timeSec: number): void {
     const ribPos = pos;
     const polyPos = Math.min(this.seq.length, ribPos + this.ribDist / STEP);
     this.renderDna(polyPos);
     this.renderMrna(ribPos, polyPos, hl);
-    this.renderProtein(this.residuesMade(pos), hl?.pulse ?? 0, timeSec);
-    for (const mesh of [this.dnaSpheres, this.dnaRungs, this.mrnaBeads, this.mrnaLinks, this.beads, this.links]) {
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }
+    // How far translation has got, in residues (fractional).
+    this.chain.render((pos - this.frameStart) / 3, hl?.pulse ?? 0, timeSec, this.yaw, this.pitch);
+    markDirty(this.dnaSpheres, this.dnaRungs, this.mrnaBeads, this.mrnaLinks);
     this.renderer.render(this.scene, this.camera);
     this.placeLabels();
   }
@@ -248,8 +202,8 @@ export class GeneScene {
     for (let k = 0; k < DNA_WINDOW; k++) {
       const i = start + k;
       if (i < 0 || i >= this.seq.length) {
-        this.hide(this.dnaSpheres, 2 * k, 2 * k + 1);
-        this.hide(this.dnaRungs, 2 * k, 2 * k + 1);
+        hideInstances(this.dnaSpheres, 2 * k, 2 * k + 1);
+        hideInstances(this.dnaRungs, 2 * k, 2 * k + 1);
         continue;
       }
       const x = POL_X + (i - polyPos) * STEP;
@@ -272,9 +226,9 @@ export class GeneScene {
       const reach = Math.min(r, 0.2);
       this.v.subVectors(this.b, this.a).normalize();
       this.center.copy(this.a).addScaledVector(this.v, reach);
-      this.cylinder(this.dnaRungs, 2 * k, this.a, this.center, 0.045 * fade);
+      setCylinder(this.dnaRungs, 2 * k, this.a, this.center, 0.045 * fade);
       this.center.copy(this.b).addScaledVector(this.v, -reach);
-      this.cylinder(this.dnaRungs, 2 * k + 1, this.b, this.center, 0.045 * fade);
+      setCylinder(this.dnaRungs, 2 * k + 1, this.b, this.center, 0.045 * fade);
       this.dnaRungs.setColorAt(2 * k, this.col.setHex(BASE_COLORS[base] ?? BASE_COLORS.N));
       this.dnaRungs.setColorAt(2 * k + 1, this.col.setHex(BASE_COLORS[complement(base)] ?? BASE_COLORS.N));
     }
@@ -290,8 +244,8 @@ export class GeneScene {
       // Base j sits at the ribosome when j == ribPos; earlier bases have moved further along.
       const dist = this.ribDist + (ribPos - j) * STEP;
       if (j < 0 || j >= polyPos || j >= this.seq.length || dist < 0 || dist > total) {
-        this.hide(this.mrnaBeads, k);
-        this.hide(this.mrnaLinks, k);
+        hideInstances(this.mrnaBeads, k);
+        hideInstances(this.mrnaLinks, k);
         continue;
       }
       this.mrnaPath.getPointAt(dist / total, this.a);
@@ -307,110 +261,10 @@ export class GeneScene {
       const nextDist = dist - STEP; // base j+1 is one step back along the path
       if (j + 1 < polyPos && nextDist >= 0) {
         this.mrnaPath.getPointAt(nextDist / total, this.b);
-        this.cylinder(this.mrnaLinks, k, this.a, this.b, 0.025 * fade);
+        setCylinder(this.mrnaLinks, k, this.a, this.b, 0.025 * fade);
         this.mrnaLinks.setColorAt(k, this.col.setHex(0x9aa7bd));
-      } else this.hide(this.mrnaLinks, k);
+      } else hideInstances(this.mrnaLinks, k);
     }
-  }
-
-  // ---------- Protein: grows from the ribosome, folding as it goes ----------
-  private renderProtein(made: number, pulse: number, timeSec: number): void {
-    const p = this.protein;
-    const n = p ? Math.min(p.residues.length, this.maxResidues) : 0;
-    if (!p || n === 0 || made <= 0) {
-      this.hide(this.beads, ...range(this.beads.count));
-      this.hide(this.links, ...range(this.links.count));
-      this.released = 0;
-      return;
-    }
-    const e = Math.min(made, n);
-    const { frames } = p.fold;
-    // Fold progress follows how much of the chain exists.
-    const phi = Math.pow(Math.min(1, e / n), 1.3) * (frames.length - 1);
-    const f0 = Math.floor(phi);
-    const f1 = Math.min(frames.length - 1, f0 + 1);
-    const ft = phi - f0;
-    const A = frames[f0];
-    const B = frames[f1];
-    const X = this.positions;
-    for (let i = 0; i < n * 3; i++) X[i] = A[i] + (B[i] - A[i]) * ft;
-
-    // Released into the "stage" once the stop codon has been read.
-    this.released = p.stopFound ? easeInOut(Math.min(1, Math.max(0, made - n))) : 0;
-
-    // Attached: newest residue at the ribosome exit, chain trailing away from it.
-    const visible = Math.min(n, Math.ceil(e));
-    const newest = Math.max(0, Math.min(n - 1, e - 1));
-    const lo = Math.floor(newest);
-    const hiIdx = Math.min(n - 1, lo + 1);
-    const t = newest - lo;
-    this.anchor.set(
-      X[lo * 3] + (X[hiIdx * 3] - X[lo * 3]) * t,
-      X[lo * 3 + 1] + (X[hiIdx * 3 + 1] - X[lo * 3 + 1]) * t,
-      X[lo * 3 + 2] + (X[hiIdx * 3 + 2] - X[lo * 3 + 2]) * t,
-    );
-    this.centroidOf(X, visible);
-    this.v.subVectors(this.centroid, this.anchor);
-    if (this.v.lengthSq() > 4) this.qa.setFromUnitVectors(this.v.normalize(), GeneScene.AWAY);
-    else this.qa.identity();
-
-    // Staged: centred, larger, turning slowly; drag to rotate.
-    this.centroidOf(X, n);
-    const stagedCentroid = this.b.copy(this.centroid);
-    this.e.set(this.pitch, this.yaw + timeSec * 0.25, 0);
-    this.qs.setFromEuler(this.e);
-
-    const rel = this.released;
-    const newestIdx = Math.floor(Math.max(0, Math.min(n - 1, e)));
-    for (let i = 0; i < n; i++) {
-      if (i >= visible) {
-        this.hide(this.beads, i);
-        this.hide(this.links, i);
-        continue;
-      }
-      this.residuePoint(i, X, stagedCentroid, rel, this.a);
-      const growing = i === visible - 1 && e < n ? Math.max(0.15, e - Math.floor(e) || 1) : 1;
-      const isNewest = rel === 0 && i === newestIdx;
-      // Beads and links share a radius, so the chain reads as one continuous tube.
-      const tube = 1.25 * ANGSTROM * (rel > 0 ? 1 + (STAGED_SCALE - 1) * rel : 1);
-      const radius = tube * growing * (isNewest ? 1.8 + 0.8 * pulse : 1);
-      this.m.compose(this.a, this.q.identity(), this.scale.setScalar(radius));
-      this.beads.setMatrixAt(i, this.m);
-      this.col.copy(this.colors[i]);
-      if (isNewest) this.col.lerp(this.white, 0.35 + 0.5 * pulse);
-      this.beads.setColorAt(i, this.col);
-
-      if (i + 1 < visible) {
-        this.residuePoint(i + 1, X, stagedCentroid, rel, this.v);
-        this.cylinder(this.links, i, this.a, this.v, tube);
-        this.links.setColorAt(i, this.colors[i]);
-      } else this.hide(this.links, i);
-    }
-  }
-
-  /** Scene position of residue i, blended between attached-to-ribosome and staged. */
-  private residuePoint(i: number, X: Float32Array, stagedCentroid: THREE.Vector3, rel: number, out: THREE.Vector3) {
-    const x = X[i * 3], y = X[i * 3 + 1], z = X[i * 3 + 2];
-    // attached
-    out.set(x - this.anchor.x, y - this.anchor.y, z - this.anchor.z).applyQuaternion(this.qa).multiplyScalar(ANGSTROM).add(EXIT);
-    if (rel <= 0) return out;
-    // staged
-    const sx = x - stagedCentroid.x, sy = y - stagedCentroid.y, sz = z - stagedCentroid.z;
-    this.center.set(sx, sy, sz).applyQuaternion(this.qs).multiplyScalar(ANGSTROM * STAGED_SCALE).add(STAGE);
-    return out.lerp(this.center, rel);
-  }
-
-  private centroidOf(X: Float32Array, count: number): void {
-    this.centroid.set(0, 0, 0);
-    if (count <= 0) return;
-    for (let i = 0; i < count; i++) this.centroid.x += X[i * 3], this.centroid.y += X[i * 3 + 1], this.centroid.z += X[i * 3 + 2];
-    this.centroid.divideScalar(count);
-  }
-
-  private proteinLabelPoint(): THREE.Vector3 {
-    const attached = EXIT.clone().add(new THREE.Vector3(1.1, -0.9, 0));
-    const staged = STAGE.clone().add(new THREE.Vector3(2.7, 0.4, 0));
-    return new THREE.Vector3().lerpVectors(attached, staged, this.released);
   }
 
   private placeLabels(): void {
@@ -433,21 +287,6 @@ export class GeneScene {
       const sy = Math.min(h - hh, Math.max(hh, ((1 - p.y) / 2) * h));
       el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
     }
-  }
-
-  private cylinder(mesh: THREE.InstancedMesh, index: number, from: THREE.Vector3, to: THREE.Vector3, radius: number) {
-    const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
-    const len = Math.hypot(dx, dy, dz);
-    if (len < 1e-6 || radius <= 0) return this.hide(mesh, index);
-    this.scale.set(dx / len, dy / len, dz / len);
-    this.q.setFromUnitVectors(GeneScene.UP, this.scale);
-    this.center.set(from.x + dx / 2, from.y + dy / 2, from.z + dz / 2);
-    this.m.compose(this.center, this.q, this.scale.set(radius, len, radius));
-    mesh.setMatrixAt(index, this.m);
-  }
-
-  private hide(mesh: THREE.InstancedMesh, ...indices: number[]) {
-    for (const i of indices) mesh.setMatrixAt(i, GeneScene.ZERO);
   }
 
   private resize(): void {
@@ -481,17 +320,4 @@ export class GeneScene {
     this.resizeObserver.disconnect();
     this.renderer.dispose();
   }
-}
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
-function easeInOut(t: number): number {
-  return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
-}
-
-function range(n: number): number[] {
-  return Array.from({ length: n }, (_, i) => i);
 }

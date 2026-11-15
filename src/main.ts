@@ -23,14 +23,17 @@ import type { Base, FrameSetting, MappingResult, MusicSettings, ScaleId } from '
 import { SequenceStrip } from './ui/strip';
 import { GeneScene, PROPERTY_COLORS } from './visual/geneScene';
 import { HelixView, type HelixHighlight } from './visual/helix';
+import { TowerScene } from './visual/towerScene';
 
-type ViewId = 'helix' | 'protein';
+type ViewId = 'helix' | 'protein' | 'tower';
 // v2: earlier versions saved the view on every load, not just when chosen.
 const VIEW_KEY = 'dna-music-player:view-choice';
 const CAVEATS: Record<ViewId, string> = {
   helix: 'Idealised B-DNA diagram, not a measured structure',
   protein: 'Simplified view. The protein shape is a rough estimate, not a prediction. Drag to turn it once the protein is complete.',
+  tower: 'Artistic view of the same steps. The protein shape is a rough estimate, not a prediction. Drag to look around.',
 };
+const VIEWS: ViewId[] = ['helix', 'protein', 'tower'];
 
 /** Longer inputs are truncated for now; window summarisation arrives in V2. */
 const MAX_BASES = 200_000;
@@ -53,7 +56,8 @@ const ui = {
   bioMapping: $('bio-mapping'),
   sample: $<HTMLSelectElement>('sample'),
   sampleAbout: $('sample-about'),
-  importBox: $<HTMLDetailsElement>('import'),
+  importToggle: $<HTMLButtonElement>('import-toggle'),
+  importBox: $('import'),
   fastaInput: $<HTMLTextAreaElement>('fasta-input'),
   fastaLoad: $<HTMLButtonElement>('fasta-load'),
   fastaFile: $<HTMLInputElement>('fasta-file'),
@@ -77,13 +81,26 @@ const ui = {
   drumLevel: $<HTMLInputElement>('drum-level'),
   drumLevelOut: $('drum-level-out'),
   showBio: $<HTMLInputElement>('show-bio'),
-  sigCard: $('sig-card'),
-  sigTitle: $('sig-title'),
-  sigSub: $('sig-sub'),
-  sigChips: $('sig-chips'),
-  sigCustom: $<HTMLButtonElement>('sig-custom'),
+  soundSummaryTitle: $('sound-summary-title'),
+  soundSummaryText: $('sound-summary-text'),
+  soundGroupTitle: $('sound-group-title'),
+  soundNote: $('sound-note'),
   sigReset: $<HTMLButtonElement>('sig-reset'),
-  soundCustom: $('sound-custom'),
+  settings: $('settings'),
+  settingsBackdrop: $('settings-backdrop'),
+  settingsOpen: $<HTMLButtonElement>('settings-open'),
+  settingsClose: $<HTMLButtonElement>('settings-close'),
+  settingsBack: $<HTMLButtonElement>('settings-back'),
+  settingsTitle: $('settings-title'),
+  settingsList: $('settings-list'),
+  vKeyscale: $('v-keyscale'),
+  vTempo: $('v-tempo'),
+  vInstrument: $('v-instrument'),
+  vBeat: $('v-beat'),
+  vDrumLevel: $('v-drum-level'),
+  vMapping: $('v-mapping'),
+  vFrame: $('v-frame'),
+  vView: $('v-view'),
   bioWhy: $('bio-why'),
   dropOverlay: $('drop-overlay'),
   viewSwitch: $('view-switch'),
@@ -120,6 +137,9 @@ const isSmall = window.matchMedia('(max-width: 860px)').matches;
 const engine = new AudioEngine(state.instrument, state.tempo);
 const helix = new HelixView(ui.helix, isSmall ? 110 : 170);
 const geneScene = new GeneScene(ui.helix, $('scene-labels'), { small: isSmall });
+const towerScene = new TowerScene(ui.helix, $('scene-labels'), { small: isSmall });
+/** The views that show the gene being made into a protein. */
+const proteinScenes = [geneScene, towerScene];
 const strip = new SequenceStrip($('strip'));
 
 $('version').textContent = `v${version}`;
@@ -128,7 +148,8 @@ $('version').textContent = `v${version}`;
 /** Gene → protein is the default; the helix is used only if the viewer chose it. */
 function readStoredView(): ViewId {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'helix' ? 'helix' : 'protein';
+    const stored = localStorage.getItem(VIEW_KEY) as ViewId | null;
+    return stored && VIEWS.includes(stored) ? stored : 'protein';
   } catch {
     return 'protein';
   }
@@ -148,24 +169,27 @@ function setView(next: ViewId) {
   view = next;
   helix.setVisible(next === 'helix');
   geneScene.setVisible(next === 'protein');
-  for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button'))
+  towerScene.setVisible(next === 'tower');
+  for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button')) {
     btn.setAttribute('aria-checked', String(btn.dataset.view === next));
+    if (btn.dataset.view === next) ui.vView.textContent = btn.textContent;
+  }
   ui.caveat.textContent = CAVEATS[next];
-  ui.legend.hidden = next !== 'protein';
-  ui.helix.classList.toggle('view-protein', next === 'protein');
+  ui.legend.hidden = next === 'helix';
+  ui.helix.classList.toggle('view-protein', next !== 'helix');
   updateProtein();
 }
 
 /** Work out the protein for the current reading frame; fold it only when the protein view needs it. */
 function updateProtein() {
   chain = proteinFrom(state.sequence, frameStart);
-  geneScene.setSequence(state.sequence, frameStart);
+  for (const s of proteinScenes) s.setSequence(state.sequence, frameStart);
   const note = proteinNote(chain);
   ui.sceneNote.textContent = note;
-  ui.sceneNote.hidden = view !== 'protein' || note === '';
-  if (view !== 'protein') return;
+  ui.sceneNote.hidden = view === 'helix' || note === '';
+  if (view === 'helix') return;
   if (!chain.residues) {
-    geneScene.setProtein(null);
+    for (const s of proteinScenes) s.setProtein(null);
     return;
   }
   let fold = foldCache.get(chain.residues);
@@ -174,7 +198,8 @@ function updateProtein() {
     if (foldCache.size > 8) foldCache.clear();
     foldCache.set(chain.residues, fold);
   }
-  geneScene.setProtein({ residues: chain.residues, fold, stopFound: chain.stopFound });
+  const protein = { residues: chain.residues, fold, stopFound: chain.stopFound };
+  for (const s of proteinScenes) s.setProtein(protein);
 }
 
 function proteinNote(c: ProteinChain): string {
@@ -331,39 +356,37 @@ const scaleShort = (id: ScaleId) => SCALES[id].name.replace(/\s*\(.*\)$/, '');
 const instrumentName = (id: InstrumentId) => INSTRUMENTS.find((i) => i.id === id)?.name ?? id;
 const beatName = (id: BeatId) => BEATS.find((b) => b.id === id)?.name ?? id;
 
+/** The sidebar's one-line sound summary, and the values shown on the settings rows. */
 function renderSignature() {
   const changed = overrides();
   const mixed = changed.size > 0;
   const name = state.soundName || 'This sequence';
-  ui.sigCard.classList.toggle('mixed', mixed);
-  ui.sigTitle.textContent = mixed ? `🎛 Your mix, based on ${name}` : `🧬 ${possessive(name)} sound`;
-  ui.sigSub.textContent = mixed
+  const title = mixed ? `Your mix, based on ${name}` : `${possessive(name)} sound`;
+  ui.soundSummaryTitle.textContent = title;
+  ui.soundGroupTitle.textContent = title;
+  ui.soundNote.textContent = mixed
     ? `You’ve changed ${changed.size} of the 5 settings the DNA chose.`
     : state.signature?.dnaOnly
-      ? 'Chosen by the DNA itself (no protein found, so from the bases alone). Same sequence, same sound.'
-      : 'Chosen by the DNA itself. Same sequence, same sound.';
+      ? 'Chosen by the DNA itself (no protein found, so from the bases alone). Change any of these to make it your own.'
+      : 'Chosen by the DNA itself. Change any of these to make it your own.';
   ui.sigReset.hidden = !mixed;
   ui.sigReset.textContent = `↺ Back to ${possessive(name)} sound`;
 
   const s = state.settings;
-  const keyChanged = changed.has('key') || changed.has('scale');
-  const chips: [string, boolean][] = [
-    [`${KEY_NAMES[s.key]} ${s.faithful ? '· all 12 notes' : scaleShort(s.scale)}`, keyChanged],
-    [`${state.tempo} BPM`, changed.has('tempo')],
-    [instrumentName(state.instrument), changed.has('instrument')],
-    [state.beat === 'off' ? 'No drums' : beatName(state.beat), changed.has('beat')],
-  ];
-  ui.sigChips.replaceChildren(
-    ...chips.map(([text, isChanged]) => {
-      const li = document.createElement('li');
-      li.textContent = text;
-      li.classList.toggle('changed', isChanged);
-      if (isChanged) li.title = 'Changed by you';
-      return li;
-    }),
-  );
-  for (const field of ui.soundCustom.querySelectorAll<HTMLElement>('[data-sig]'))
-    field.classList.toggle('changed', changed.has(field.dataset.sig as SignatureSetting));
+  const keyScale = `${KEY_NAMES[s.key]} ${s.faithful ? '· all 12 notes' : scaleShort(s.scale)}`;
+  const drums = state.beat === 'off' ? 'No drums' : beatName(state.beat);
+  ui.soundSummaryText.textContent = `${keyScale} · ${state.tempo} BPM · ${instrumentName(state.instrument)} · ${drums}`;
+  ui.vKeyscale.textContent = keyScale;
+  ui.vTempo.textContent = `${state.tempo} BPM`;
+  ui.vInstrument.textContent = instrumentName(state.instrument);
+  ui.vBeat.textContent = drums;
+  ui.vDrumLevel.textContent = `${Math.round(state.drumLevel * 100)}%`;
+  ui.soundSummaryTitle.closest('.sound-summary')?.classList.toggle('mixed', mixed);
+  for (const row of ui.settingsList.querySelectorAll<HTMLElement>('[data-sig]')) {
+    const isChanged = row.dataset.sig!.split(' ').some((k) => changed.has(k as SignatureSetting));
+    row.classList.toggle('changed', isChanged);
+    row.title = isChanged ? 'Changed by you' : '';
+  }
 }
 
 /** The gene's own choice for a setting, as display text. */
@@ -440,7 +463,9 @@ function syncControls() {
   for (const btn of ui.mapping.querySelectorAll<HTMLButtonElement>('button'))
     btn.setAttribute('aria-checked', String(btn.dataset.id === state.mappingId));
   ui.mappingSummary.textContent = mapping.summary;
+  ui.vMapping.textContent = mapping.name;
   ui.frameField.hidden = !mapping.usesFrame;
+  ui.vFrame.textContent = state.settings.frame === 'auto' ? 'Auto' : `Frame ${state.settings.frame + 1}`;
   ui.scale.disabled = state.settings.faithful;
   ui.beatAbout.textContent = BEATS.find((b) => b.id === state.beat)?.description ?? '';
   ui.drumLevelField.hidden = state.beat === 'off';
@@ -559,7 +584,8 @@ function frame(now: number) {
   const hl: HelixHighlight | null = ev && engine.state !== 'stopped' ? { start: ev.start, length: ev.length, pulse } : null;
 
   if (view === 'helix') helix.render(ph.pos, hl, now / 1000);
-  else geneScene.render(ph.pos, hl, now / 1000);
+  else if (view === 'protein') geneScene.render(ph.pos, hl, now / 1000);
+  else towerScene.render(ph.pos, hl, now / 1000);
   strip.update(ph.pos, hl);
 
   const shownBeat = Math.min(beat, result.totalBeats);
@@ -647,12 +673,6 @@ ui.instrument.addEventListener('change', () => {
   engine.setInstrument(state.instrument);
   syncControls();
 });
-ui.sigCustom.addEventListener('click', () => {
-  const open = ui.soundCustom.hidden;
-  ui.soundCustom.hidden = !open;
-  ui.sigCustom.setAttribute('aria-expanded', String(open));
-  ui.sigCustom.textContent = open ? '🎛 Hide the controls' : '🎛 Make it your own';
-});
 ui.sigReset.addEventListener('click', () => {
   applySignature();
   remap(true);
@@ -665,7 +685,53 @@ ui.beat.addEventListener('change', () => {
 ui.drumLevel.addEventListener('input', () => {
   state.drumLevel = Number(ui.drumLevel.value) / 100;
   ui.drumLevelOut.textContent = ui.drumLevel.value;
+  ui.vDrumLevel.textContent = `${ui.drumLevel.value}%`;
   engine.setDrumLevel(state.drumLevel);
+});
+
+// ---------- Your own DNA ----------
+ui.importToggle.addEventListener('click', () => {
+  const open = ui.importBox.hidden;
+  ui.importBox.hidden = !open;
+  ui.importToggle.setAttribute('aria-expanded', String(open));
+  if (open) ui.fastaInput.focus();
+});
+
+// ---------- Settings panel: a list of rows; each row opens its own page ----------
+function showSettingsPage(page: string | null) {
+  ui.settingsList.hidden = page !== null;
+  for (const p of ui.settings.querySelectorAll<HTMLElement>('.settings-page')) p.hidden = p.dataset.page !== page;
+  const current = page ? ui.settings.querySelector<HTMLElement>(`.settings-page[data-page="${page}"]`) : null;
+  ui.settingsTitle.textContent = current?.dataset.title ?? 'Settings';
+  ui.settingsBack.hidden = page === null;
+  (current?.querySelector<HTMLElement>('select, input, button') ?? (page ? ui.settingsBack : ui.settingsClose)).focus();
+}
+function openSettings() {
+  ui.settings.hidden = false;
+  ui.settingsBackdrop.hidden = false;
+  document.body.classList.add('settings-open');
+  showSettingsPage(null);
+}
+function closeSettings() {
+  ui.settings.hidden = true;
+  ui.settingsBackdrop.hidden = true;
+  document.body.classList.remove('settings-open');
+  ui.settingsOpen.focus();
+}
+ui.settingsOpen.addEventListener('click', openSettings);
+ui.settingsClose.addEventListener('click', closeSettings);
+ui.settingsBackdrop.addEventListener('click', closeSettings);
+ui.settingsBack.addEventListener('click', () => {
+  const from = ui.settings.querySelector<HTMLElement>('.settings-page:not([hidden])')?.dataset.page;
+  showSettingsPage(null);
+  ui.settingsList.querySelector<HTMLElement>(`.set-row[data-page="${from}"]`)?.focus();
+});
+for (const row of ui.settingsList.querySelectorAll<HTMLButtonElement>('button.set-row'))
+  row.addEventListener('click', () => showSettingsPage(row.dataset.page!));
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || ui.settings.hidden) return;
+  if (!ui.settingsBack.hidden) ui.settingsBack.click();
+  else closeSettings();
 });
 ui.showBio.addEventListener('change', () => {
   state.showBiology = ui.showBio.checked;

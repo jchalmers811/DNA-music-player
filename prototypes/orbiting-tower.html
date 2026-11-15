@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Prototype: orbiting-tower variations of the gene-to-protein scene (wiggly, supercoiled, beads on a string,
+     glowing floor, drifting building blocks, and combinations). Standalone; not part of the app build.
+     Published copy: https://claude.ai/artifact/1vpSQaCGiJvbYkiYLy7PCb
+     Open this file directly in a browser (needs internet for three.js and fonts). -->
+<style>body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Orbiting Tower Variations</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+  /* Layout: one-screen viewer. DNA-shape picker and scene toggles on top, the 3D stage fills the rest, caption and transport float on it. */
+  :root {
+    --bg: #0a0e16;
+    --panel: #111723;
+    --panel-2: #18202f;
+    --line: #243045;
+    --text: #e6ebf3;
+    --dim: #a3afc2;
+    --accent: #7dd3fc;
+    --ink: #06202e;
+    --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-head: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-ui); font-size: 14px; }
+  .app {
+    height: 100%; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 10px;
+    padding-block: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+  h1 { margin: 0; font-family: var(--font-head); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+  header p { margin: 0; color: var(--dim); font-size: 13px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  .group { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; align-items: center; }
+  .group-label { color: var(--dim); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-right: 2px; flex-shrink: 0; }
+  .pick, .toggle {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px;
+    min-height: 44px; padding: 0 14px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    font: 500 14px var(--font-ui); cursor: pointer;
+  }
+  .pick:hover, .toggle:hover { border-color: #3a4a66; }
+  .pick[aria-pressed="true"] { background: var(--accent); color: var(--ink); border-color: var(--accent); }
+  .toggle .dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--dim); box-sizing: border-box; }
+  .toggle[aria-pressed="true"] { border-color: var(--accent); }
+  .toggle[aria-pressed="true"] .dot { background: var(--accent); border-color: var(--accent); }
+  .pick:focus-visible, .toggle:focus-visible, .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .stage {
+    position: relative; flex: 1; min-height: 300px;
+    border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 35%, #13203a 0%, #0c1220 55%, #0a0e16 100%);
+  }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  .caption {
+    position: absolute; left: 12px; bottom: 12px;
+    max-width: min(440px, calc(100% - 24px));
+    padding: 12px 14px; border-radius: 12px;
+    background: rgba(17, 23, 35, 0.86); border: 1px solid var(--line);
+    backdrop-filter: blur(6px);
+  }
+  .caption h2 { margin: 0 0 4px; font: 600 16px var(--font-head); }
+  .caption p { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.5; }
+  .tools { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; }
+  .tool {
+    min-width: 44px; height: 44px; padding: 0 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: rgba(17, 23, 35, 0.86); color: var(--text);
+    font: 500 13px var(--font-ui); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .tool:hover { border-color: #3a4a66; }
+  .hint { position: absolute; right: 12px; bottom: 12px; color: var(--dim); font-size: 12px; }
+  @media (max-width: 640px) {
+    .hint { display: none; }
+    .caption { bottom: 8px; left: 8px; max-width: calc(100% - 16px); }
+  }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Orbiting tower: variations</h1>
+    <p>Pick a DNA shape, then switch the scene extras on or off. Drag to look around.</p>
+  </header>
+  <div class="bar">
+    <nav class="group" id="shapes" aria-label="DNA shape"><span class="group-label">DNA</span></nav>
+    <div class="group" aria-label="Scene extras">
+      <span class="group-label">Extras</span>
+      <button type="button" class="toggle" id="t-floor" aria-pressed="false"><span class="dot"></span>Glowing floor</button>
+      <button type="button" class="toggle" id="t-blocks" aria-pressed="false"><span class="dot"></span>Drifting building blocks</button>
+    </div>
+  </div>
+  <nav class="group" id="presets" aria-label="Combinations"><span class="group-label">Combos</span></nav>
+  <div class="stage" id="stage">
+    <div class="tools">
+      <button class="tool" id="play" type="button">Pause</button>
+      <button class="tool" id="speed" type="button" aria-label="Speed">1×</button>
+      <button class="tool" id="reset" type="button">Reset view</button>
+    </div>
+    <div class="caption" aria-live="polite">
+      <h2 id="cap-title"></h2>
+      <p id="cap-text"></p>
+    </div>
+    <span class="hint">Drag to orbit · scroll to zoom</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const STEP = 0.07;
+  const TWIST = (2 * Math.PI) / 10.5;
+  const DNA_R = 0.2;
+  const PROTEIN_LEN = 110;
+  const RES_STEP = 0.085;
+  const BASES_PER_SEC = 9;
+  const HOLD = 5;
+  const Y_P = 1.7, Y_BOTTOM = -4.5, Y_TOP = 5.5;
+  const P = V(0, Y_P, 0);
+  const UP = V(0, 1, 0);
+  const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+
+  // ---------- DNA shapes ----------
+  // Each shape gives the centre line of the double helix for a base at distance s from the polymerase
+  // (s > 0 above it, already read; s < 0 below it, still to come). Shapes stay straight where the polymerase grips.
+  const SHAPES = [
+    {
+      id: 'straight', name: 'Straight',
+      text: 'The baseline tower: a straight double helix feeding up through the polymerase, the mRNA spiralling down to the ribosome, the camera circling.',
+      axis: (s) => V(0, Y_P + s, 0),
+    },
+    {
+      id: 'wiggly', name: 'Wiggly',
+      text: 'The DNA sways in slow waves above and below the polymerase, like a strand drifting in water. It only straightens where the polymerase grips it.',
+      axis: (s) => V(0, Y_P + s, 0), wiggle: true,
+    },
+    {
+      id: 'supercoil', name: 'Supercoiled',
+      text: 'The double helix winds into a loose spring. It coils one way ahead of the polymerase and the other way behind it, as real DNA does while it is being read.',
+      axis: (s, t) => supercoil(s, t),
+    },
+    {
+      id: 'beads', name: 'Beads on a string',
+      text: 'Below the polymerase the DNA is wrapped around spools of histone proteins, the way it is packed in our cells. Each spool unwinds as it rises to the polymerase, and the DNA comes out above it bare.',
+      beads: true,
+    },
+    {
+      id: 'wiggly-supercoil', name: 'Wiggly supercoil',
+      text: 'The supercoiled spring, swaying as a whole: tight coils that also drift in slow waves.',
+      axis: (s, t) => supercoil(s, t), wiggle: true,
+    },
+    {
+      id: 'wiggly-beads', name: 'Wiggly beads',
+      text: 'Beads on a string that sway: the spools bob along a drifting strand as they rise to the polymerase and unwind.',
+      beads: true, wiggle: true,
+    },
+  ];
+  function supercoil(s, t) {
+    const y = Y_P + s, R = 0.75 * smooth(0.4, 1.8, Math.abs(s));
+    const ph = (s > 0 ? 1.7 : -1.7) * s + 0.5 * t;
+    return V(R * Math.cos(ph), y, R * Math.sin(ph));
+  }
+  /** Sideways sway at height y; zero where the polymerase grips the DNA. */
+  function wiggleAt(y, t) {
+    const a = smooth(0.3, 1.6, Math.abs(y - Y_P));
+    return V(a * 0.6 * Math.sin(1.1 * y - 1.4 * t), 0, a * 0.5 * Math.cos(0.8 * y - 1.0 * t + 1));
+  }
+
+  // Ready-made combinations of a shape and the scene extras.
+  const PRESETS = [
+    { name: 'Drifting strand', shape: 'wiggly', floor: false, blocks: true, text: 'A swaying strand in open space, with free building blocks streaming into the polymerase.' },
+    { name: 'Museum exhibit', shape: 'supercoil', floor: true, blocks: false, text: 'The supercoiled tower standing on a glowing plinth, nothing else in the way.' },
+    { name: 'Chromatin garden', shape: 'beads', floor: true, blocks: true, text: 'Histone spools rising out of a glowing floor, building blocks drifting in to be used.' },
+    { name: 'Swaying beads', shape: 'wiggly-beads', floor: false, blocks: true, text: 'Spools bob along a drifting strand while building blocks stream past.' },
+    { name: 'Everything', shape: 'wiggly-supercoil', floor: true, blocks: true, text: 'Wiggly supercoil on the glowing floor, with drifting building blocks: every idea at once.' },
+  ];
+
+  // ---------- Sequence and protein ----------
+  let seed = 7;
+  const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const SEQ = Array.from({ length: 4096 }, () => 'ACGT'[Math.floor(rand() * 4)]);
+  const seqAt = (i) => SEQ[((i % SEQ.length) + SEQ.length) % SEQ.length];
+  const BASE_COL = { A: 0x34d399, C: 0x60a5fa, G: 0xfbbf24, T: 0xf87171 };
+  const BASE_COLS = [0x34d399, 0x60a5fa, 0xfbbf24, 0xf87171];
+  const CLASS_COLS = [0xe8b26a, 0x5eead4, 0x818cf8, 0xf472b6];
+  const RES_COL = Array.from({ length: PROTEIN_LEN }, () => {
+    const r = rand();
+    return CLASS_COLS[r < 0.38 ? 0 : r < 0.72 ? 1 : r < 0.86 ? 2 : 3];
+  });
+  const FOLD = (() => {
+    const out = [];
+    let p = V(0, 0, 0), d = V(1, 0.2, 0).normalize();
+    for (let i = 0; i < PROTEIN_LEN; i++) {
+      d.add(V(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(0.7)).normalize();
+      if (p.clone().add(d.clone().multiplyScalar(RES_STEP)).length() > 0.62) d.sub(p.clone().multiplyScalar(2.2)).normalize();
+      p = p.clone().add(d.clone().multiplyScalar(RES_STEP));
+      out.push(p.clone());
+    }
+    for (let i = 0; i < PROTEIN_LEN; i++) {
+      if (Math.floor(i / 14) % 2 === 0) {
+        const a = i * 1.75;
+        out[i].add(V(Math.cos(a), Math.sin(a), Math.sin(a * 0.5)).multiplyScalar(0.06));
+      }
+    }
+    const c = out.reduce((s, q) => s.add(q), V(0, 0, 0)).multiplyScalar(1 / out.length);
+    return out.map((q) => q.sub(c));
+  })();
+
+  // ---------- Three.js setup ----------
+  const stage = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setClearColor(0x000000, 0);
+  stage.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x0b1220, 9, 26);
+  const camera = new THREE.PerspectiveCamera(46, 1, 0.05, 80);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const key = new THREE.DirectionalLight(0xffffff, 1.25); key.position.set(3, 6, 8); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x8ab4ff, 0.8); rim.position.set(-6, -4, -6); scene.add(rim);
+  const floorLight = new THREE.PointLight(0x7dd3fc, 0, 7); floorLight.position.set(0, -4, 0); scene.add(floorLight);
+
+  const sphereGeo = new THREE.SphereGeometry(1, 14, 10);
+  const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1);
+  const inst = (geo, n, mat) => {
+    const m = new THREE.InstancedMesh(geo, mat || new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.05 }), n);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.setColorAt(0, new THREE.Color(0xffffff));
+    m.frustumCulled = false;
+    scene.add(m);
+    return m;
+  };
+  const MAX_DNA = 700;
+  const dnaBalls = inst(sphereGeo, MAX_DNA * 2);
+  const dnaRungs = inst(cylGeo, MAX_DNA);
+  const mrnaBeads = inst(sphereGeo, 480);
+  const protBeads = inst(sphereGeo, PROTEIN_LEN);
+
+  const blob = (color, opacity, glow) => {
+    const m = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({
+      color, emissive: color, emissiveIntensity: glow, roughness: 0.6, transparent: true, opacity, depthWrite: false, fog: false,
+    }));
+    m.renderOrder = 2;
+    scene.add(m);
+    return m;
+  };
+  const polymerase = blob(0xa78bfa, 0.3, 0.45);
+  polymerase.position.copy(P);
+  polymerase.scale.setScalar(0.5);
+  const ribSmall = blob(0xfde4b8, 0.4, 0.75);
+  const ribLarge = blob(0xfcd9a0, 0.36, 0.75);
+
+  // Histone spools for "beads on a string"
+  const spoolMat = new THREE.MeshStandardMaterial({ color: 0x94a3c4, emissive: 0x4b5a7a, emissiveIntensity: 0.35, roughness: 0.7, transparent: true, opacity: 0.85 });
+  const spoolGeo = new THREE.CylinderGeometry(1, 1, 1, 24, 1);
+  const spools = Array.from({ length: 10 }, () => { const m = new THREE.Mesh(spoolGeo, spoolMat); m.visible = false; scene.add(m); return m; });
+
+  // Glowing floor
+  const floorTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+    grad.addColorStop(0, 'rgba(125, 211, 252, 0.55)');
+    grad.addColorStop(0.35, 'rgba(56, 150, 220, 0.22)');
+    grad.addColorStop(1, 'rgba(10, 14, 22, 0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = 'rgba(165, 220, 252, 0.28)';
+    g.lineWidth = 1.2;
+    for (const r of [34, 64, 94]) { g.beginPath(); g.arc(128, 128, r, 0, Math.PI * 2); g.stroke(); }
+    return new THREE.CanvasTexture(c);
+  })();
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(5.5, 64),
+    new THREE.MeshBasicMaterial({ map: floorTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = Y_BOTTOM - 0.05;
+  floor.visible = false;
+  scene.add(floor);
+
+  // Drifting building blocks (free nucleotides)
+  const BLOCKS = 280;
+  const blockMesh = inst(sphereGeo, BLOCKS, new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.05, emissive: 0x111111 }));
+  const blocks = Array.from({ length: BLOCKS }, (_, k) => ({ p: V(0, 0, 0), v: V(0, 0, 0), col: BASE_COLS[k % 4], life: 1 }));
+  const spawn = (b, anywhere) => {
+    const a = rand() * Math.PI * 2, r = anywhere ? 0.8 + rand() * 5.5 : 4 + rand() * 2.5;
+    b.p.set(Math.cos(a) * r, Y_BOTTOM + 0.3 + rand() * (Y_TOP - Y_BOTTOM), Math.sin(a) * r);
+    b.v.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(0.15);
+    b.life = 1;
+  };
+  blocks.forEach((b) => spawn(b, true));
+  blockMesh.visible = false;
+
+  // ---------- mRNA spiral and ribosome (shared by every shape) ----------
+  const mrnaPts = [P.clone()];
+  for (let k = 1; k <= 9; k++) {
+    const a = k * 0.72, r = 0.45 + k * 0.17, y = 1.55 - k * 0.38;
+    mrnaPts.push(V(Math.cos(a) * r, y, Math.sin(a) * r));
+  }
+  const RIB = mrnaPts[mrnaPts.length - 1].clone();
+  const outward = V(RIB.x, 0, RIB.z).normalize();
+  mrnaPts.push(RIB.clone().add(outward.clone().multiplyScalar(1.4)).add(V(0, -0.3, 0)));
+  mrnaPts.push(RIB.clone().add(outward.clone().multiplyScalar(3.4)).add(V(0, -0.6, 0)));
+  const curve = new THREE.CatmullRomCurve3(mrnaPts, false, 'centripetal');
+  const curveLen = curve.getLength();
+  let ribArc = 0;
+  { let best = Infinity; for (let k = 0; k <= 600; k++) { const d = curve.getPointAt(k / 600).distanceTo(RIB); if (d < best) { best = d; ribArc = (k / 600) * curveLen; } } }
+  const tan = curve.getTangentAt(ribArc / curveLen).normalize();
+  const ry = UP.clone().sub(tan.clone().multiplyScalar(UP.dot(tan))).normalize();
+  const rz = tan.clone().cross(ry).normalize();
+  const ribQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(tan, ry, rz));
+  ribSmall.position.copy(RIB).add(ry.clone().multiplyScalar(0.3)); ribSmall.quaternion.copy(ribQ); ribSmall.scale.set(0.62, 0.3, 0.5);
+  ribLarge.position.copy(RIB).add(ry.clone().multiplyScalar(-0.45)); ribLarge.quaternion.copy(ribQ); ribLarge.scale.set(0.75, 0.48, 0.62);
+  const exit = RIB.clone().add(ry.clone().multiplyScalar(-0.85));
+  const growDir = V(outward.x * 0.3, -1, outward.z * 0.3).normalize();
+  const gPerp1 = growDir.clone().cross(V(1, 0, 0)).normalize();
+  const gPerp2 = growDir.clone().cross(gPerp1).normalize();
+  const foldCenter = exit.clone().add(growDir.clone().multiplyScalar(1.0));
+
+  // ---------- State ----------
+  let shape = SHAPES[0];
+  let pos = ribArc / STEP - 4, hold = 0, time = 0;
+  let playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches, speed = 1;
+  let yaw = 0, pitch = 0, zoom = 1, orbitAngle = 0;
+  const CAM = V(0, 4.4, 8.4), TARGET = V(0, -0.7, 0);
+
+  // ---------- Helpers ----------
+  const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s4 = V(1, 1, 1), col = new THREE.Color(), white = new THREE.Color(0xffffff);
+  const tmpA = V(0, 0, 0), tmpB = V(0, 0, 0);
+  function place(mesh, i, p, r) { m4.compose(p, q4.identity(), s4.setScalar(r)); mesh.setMatrixAt(i, m4); }
+  function hideAt(mesh, i) { m4.makeScale(0, 0, 0); mesh.setMatrixAt(i, m4); }
+  function cylinder(mesh, i, a, b, r) {
+    const len = a.distanceTo(b);
+    if (len < 1e-5) return hideAt(mesh, i);
+    tmpA.copy(b).sub(a).normalize();
+    q4.setFromUnitVectors(UP, tmpA);
+    m4.compose(tmpB.copy(a).add(b).multiplyScalar(0.5), q4, s4.set(r, len, r));
+    mesh.setMatrixAt(i, m4);
+  }
+
+  // ---------- DNA centre line ----------
+  // Returns bases ordered top to bottom: { i, s, c } where c is the centre-line point.
+  const LINKER = 20, WRAP = 64, PERIOD = LINKER + WRAP, SPOOL_R = 0.42, TURNS = 1.25;
+  function centreLine(t) {
+    const out = sway(centreLineRaw(t), t);
+    return out;
+  }
+  /** Adds the wiggle (when the shape has it) to the centre line and the spools. */
+  function sway(line, t) {
+    if (!shape.wiggle) return line;
+    for (const b of line) b.c.add(wiggleAt(b.c.y, t));
+    for (const m of spools) if (m.visible) m.position.add(wiggleAt(m.position.y, t));
+    return line;
+  }
+  function centreLineRaw(t) {
+    const out = [];
+    const iTop = Math.floor(pos - (Y_TOP - Y_P) / STEP);
+    // Above the polymerase (already read): every shape uses its axis; beads are bare here.
+    for (let i = iTop; i < pos; i++) {
+      const s = (pos - i) * STEP;
+      out.push({ i, s, c: shape.beads ? V(0, Y_P + s, 0) : shape.axis(s, t) });
+    }
+    if (!shape.beads) {
+      const iBottom = Math.ceil(pos + (Y_P - Y_BOTTOM) / STEP);
+      for (let i = Math.ceil(pos); i <= iBottom && out.length < MAX_DNA; i++) {
+        const s = (pos - i) * STEP;
+        out.push({ i, s, c: shape.axis(s, t) });
+      }
+      spools.forEach((m) => (m.visible = false));
+      return out;
+    }
+    // Below the polymerase, beads on a string: walk down from the polymerase,
+    // linker DNA heads down and drifts back to the tower's axis; wrapped DNA loops round a spool.
+    let cur = P.clone().add(V(0, -(Math.ceil(pos) - pos) * STEP, 0));
+    let spool = null, spoolCount = 0;
+    for (let i = Math.ceil(pos); out.length < MAX_DNA; i++) {
+      const m = ((i % PERIOD) + PERIOD) % PERIOD;
+      if (m < LINKER) {
+        spool = null;
+        const next = cur.clone().add(V(0, -STEP, 0));
+        next.x *= 0.93; next.z *= 0.93;
+        cur = next;
+      } else {
+        const w = m - LINKER;
+        if (!spool) {
+          const id = Math.floor(i / PERIOD);
+          const ang = id * 2.4;
+          const a = V(Math.cos(ang), 0, Math.sin(ang));
+          const h = UP.clone().cross(a).normalize().multiplyScalar(id % 2 ? 1 : -1);
+          const depth = Y_P - cur.y;
+          const u = smooth(0.35, 1.9, depth);
+          const r = SPOOL_R * u;
+          const phi0 = (w / WRAP) * TURNS * 2 * Math.PI;
+          // Entry point chosen so the base we start on sits at `cur` even mid-wrap.
+          const local = (phi) => h.clone().multiplyScalar(r - r * Math.cos(phi)).add(V(0, -r * Math.sin(phi), 0)).add(a.clone().multiplyScalar(0.05 * phi));
+          const E = cur.clone().sub(local(phi0));
+          spool = { a, h, r, u, E, local };
+          if (spoolCount < spools.length && u > 0.02) {
+            const sm = spools[spoolCount++];
+            sm.visible = true;
+            sm.position.copy(E).add(h.clone().multiplyScalar(r)).add(a.clone().multiplyScalar(0.05 * Math.PI * TURNS));
+            sm.quaternion.setFromUnitVectors(UP, a);
+            sm.scale.set(r * 0.78, 0.26 * u, r * 0.78);
+          }
+        }
+        const phi = ((w + 1) / WRAP) * TURNS * 2 * Math.PI;
+        cur = spool.E.clone().add(spool.local(phi));
+      }
+      if (cur.y < Y_BOTTOM) break;
+      out.push({ i, s: (pos - i) * STEP, c: cur.clone() });
+    }
+    for (let k = spoolCount; k < spools.length; k++) spools[k].visible = false;
+    return out;
+  }
+
+  function drawDna(t) {
+    const line = centreLine(t);
+    const n = line.length;
+    if (!n) { dnaBalls.count = 0; dnaRungs.count = 0; return; }
+    // Tangents, then frames carried smoothly outward from the polymerase (parallel transport).
+    const tangents = line.map((b, k) => {
+      const a = line[Math.max(0, k - 1)].c, c = line[Math.min(n - 1, k + 1)].c;
+      return c.clone().sub(a).normalize();
+    });
+    let k0 = line.findIndex((b) => b.s <= 0);
+    if (k0 < 0) k0 = n - 1;
+    const normals = new Array(n);
+    normals[k0] = tangents[k0].clone().cross(V(1, 0, 0)).normalize();
+    const carry = (from, to) => {
+      const q = new THREE.Quaternion().setFromUnitVectors(tangents[from], tangents[to]);
+      const nn = normals[from].clone().applyQuaternion(q);
+      nn.sub(tangents[to].clone().multiplyScalar(nn.dot(tangents[to]))).normalize();
+      normals[to] = nn;
+    };
+    for (let k = k0 + 1; k < n; k++) carry(k - 1, k);
+    for (let k = k0 - 1; k >= 0; k--) carry(k + 1, k);
+
+    for (let k = 0; k < n; k++) {
+      const { i, s, c } = line[k];
+      const tgt = tangents[k], nrm = normals[k], bin = tgt.clone().cross(nrm);
+      const fade = smooth(0, 0.8, Math.min(c.y - Y_BOTTOM, Y_TOP - c.y));
+      const open = 1 - smooth(0.28, 0.46, Math.abs(s));
+      const r = DNA_R * (1 + open * 0.9);
+      const th = i * TWIST;
+      const pa = c.clone().add(nrm.clone().multiplyScalar(Math.cos(th) * r)).add(bin.clone().multiplyScalar(Math.sin(th) * r));
+      const pb = c.clone().add(nrm.clone().multiplyScalar(Math.cos(th + 2.4) * r)).add(bin.clone().multiplyScalar(Math.sin(th + 2.4) * r));
+      place(dnaBalls, 2 * k, pa, 0.045 * fade);
+      place(dnaBalls, 2 * k + 1, pb, 0.045 * fade);
+      dnaBalls.setColorAt(2 * k, col.setHex(0xa5b4cf));
+      dnaBalls.setColorAt(2 * k + 1, col.setHex(0x7f8db0));
+      if (open > 0.3 || fade <= 0) hideAt(dnaRungs, k);
+      else cylinder(dnaRungs, k, pa, pb, 0.017 * fade);
+      dnaRungs.setColorAt(k, col.setHex(BASE_COL[seqAt(i)]));
+    }
+    dnaBalls.count = n * 2;
+    dnaRungs.count = n;
+  }
+
+  function drawMrna() {
+    const readBase = pos - ribArc / STEP;
+    const codonStart = Math.floor(readBase / 3) * 3;
+    let n = 0;
+    for (let j = Math.max(0, Math.ceil(pos - curveLen / STEP)); j <= Math.floor(pos) && n < 480; j++) {
+      const arc = (pos - j) * STEP;
+      if (arc < 0 || arc > curveLen) continue;
+      const reading = j >= codonStart && j < codonStart + 3;
+      place(mrnaBeads, n, curve.getPointAt(arc / curveLen), (reading ? 0.06 : 0.035) * smooth(0, 1.2, curveLen - arc));
+      col.setHex(BASE_COL[seqAt(j)]);
+      if (reading) col.lerp(white, 0.45);
+      mrnaBeads.setColorAt(n, col);
+      n++;
+    }
+    mrnaBeads.count = n;
+  }
+
+  function drawProtein() {
+    const made = Math.max(0, Math.min(PROTEIN_LEN, Math.floor((pos - ribArc / STEP) / 3)));
+    const spin = new THREE.Quaternion().setFromAxisAngle(growDir, time * 0.25);
+    for (let i = 0; i < made; i++) {
+      const age = made - 1 - i + hold * 14;
+      const f = smooth(3, 30, age);
+      const ext = exit.clone()
+        .add(growDir.clone().multiplyScalar(0.05 + Math.min(age, 40) * RES_STEP))
+        .add(gPerp1.clone().multiplyScalar(Math.sin(age * 0.9) * 0.03))
+        .add(gPerp2.clone().multiplyScalar(Math.cos(age * 0.7) * 0.03));
+      const p = ext.lerp(FOLD[i].clone().applyQuaternion(spin).add(foldCenter), f);
+      const newest = i === made - 1 && hold === 0;
+      place(protBeads, i, p, newest ? 0.075 : 0.052);
+      col.setHex(RES_COL[i]);
+      if (newest) col.lerp(white, 0.5);
+      protBeads.setColorAt(i, col);
+    }
+    protBeads.count = made;
+  }
+
+  function drawBlocks(dt) {
+    if (!blockMesh.visible) return;
+    for (let k = 0; k < BLOCKS; k++) {
+      const b = blocks[k];
+      const toP = P.clone().sub(b.p);
+      const d = toP.length();
+      if (d < 2.6) b.v.add(toP.normalize().multiplyScalar(dt * 1.6 / Math.max(0.4, d)));
+      else b.v.add(V(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(dt * 0.12));
+      b.v.multiplyScalar(d < 2.6 ? 0.985 : 0.995);
+      b.p.add(b.v.clone().multiplyScalar(dt));
+      if (d < 0.35) b.life -= dt * 4;
+      if (b.life <= 0 || b.p.length() > 9 || b.p.y < Y_BOTTOM || b.p.y > Y_TOP + 1) spawn(b, false);
+      place(blockMesh, k, b.p, 0.032 * Math.max(0, b.life));
+      blockMesh.setColorAt(k, col.setHex(b.col));
+    }
+    blockMesh.instanceMatrix.needsUpdate = true;
+    if (blockMesh.instanceColor) blockMesh.instanceColor.needsUpdate = true;
+  }
+
+  // ---------- Camera ----------
+  const camPos = V(0, 0, 9), camTarget = TARGET.clone();
+  function desiredCamera() {
+    const off = CAM.clone().sub(TARGET);
+    const right = off.clone().cross(UP).normalize();
+    off.applyAxisAngle(right, pitch);
+    off.applyAxisAngle(UP, yaw + orbitAngle);
+    off.multiplyScalar(zoom);
+    return TARGET.clone().add(off);
+  }
+
+  // ---------- Loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (playing) {
+      const sdt = dt * speed;
+      time += sdt;
+      if (Math.floor((pos - ribArc / STEP) / 3) >= PROTEIN_LEN) {
+        hold += sdt;
+        if (hold > HOLD) { pos = ribArc / STEP - 4; hold = 0; }
+      } else pos += sdt * BASES_PER_SEC;
+      orbitAngle += sdt * 0.16;
+      drawBlocks(sdt);
+    }
+    drawDna(time);
+    drawMrna();
+    drawProtein();
+    for (const m of [dnaBalls, dnaRungs, mrnaBeads, protBeads]) {
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
+    const k = 1 - Math.exp(-dt * 4);
+    camPos.lerp(desiredCamera(), k);
+    camTarget.lerp(TARGET, k);
+    camera.position.copy(camPos);
+    camera.lookAt(camTarget);
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage);
+
+  // ---------- Controls ----------
+  const shapesNav = document.getElementById('shapes');
+  const capTitle = document.getElementById('cap-title');
+  const capText = document.getElementById('cap-text');
+  function chooseShape(id) {
+    shape = SHAPES.find((s) => s.id === id) || SHAPES[0];
+    capTitle.textContent = shape.name;
+    capText.textContent = shape.text;
+    for (const b of shapesNav.querySelectorAll('.pick')) b.setAttribute('aria-pressed', String(b.dataset.id === shape.id));
+    try { localStorage.setItem('tower:shape', shape.id); } catch (e) { /* not remembered */ }
+  }
+  for (const s of SHAPES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pick';
+    b.dataset.id = s.id;
+    b.textContent = s.name;
+    b.addEventListener('click', () => chooseShape(s.id));
+    shapesNav.append(b);
+  }
+
+  function setToggle(btn, on, apply) {
+    btn.setAttribute('aria-pressed', String(on));
+    apply(on);
+  }
+  const floorBtn = document.getElementById('t-floor');
+  const blocksBtn = document.getElementById('t-blocks');
+  const applyFloor = (on) => { floor.visible = on; floorLight.intensity = on ? 0.9 : 0; };
+  const applyBlocks = (on) => { blockMesh.visible = on; };
+  floorBtn.addEventListener('click', () => setToggle(floorBtn, floorBtn.getAttribute('aria-pressed') !== 'true', applyFloor));
+  blocksBtn.addEventListener('click', () => setToggle(blocksBtn, blocksBtn.getAttribute('aria-pressed') !== 'true', applyBlocks));
+
+  const presetsNav = document.getElementById('presets');
+  const markPreset = (name) => {
+    for (const b of presetsNav.querySelectorAll('.pick')) b.setAttribute('aria-pressed', String(b.dataset.name === name));
+  };
+  for (const p of PRESETS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pick';
+    b.dataset.name = p.name;
+    b.textContent = p.name;
+    b.addEventListener('click', () => {
+      chooseShape(p.shape);
+      setToggle(floorBtn, p.floor, applyFloor);
+      setToggle(blocksBtn, p.blocks, applyBlocks);
+      capTitle.textContent = p.name;
+      capText.textContent = p.text;
+      markPreset(p.name);
+    });
+    presetsNav.append(b);
+  }
+  // Picking a shape or extra by hand leaves the combo row.
+  shapesNav.addEventListener('click', () => markPreset(''));
+  floorBtn.addEventListener('click', () => markPreset(''));
+  blocksBtn.addEventListener('click', () => markPreset(''));
+
+  const playBtn = document.getElementById('play');
+  const syncPlay = () => { playBtn.textContent = playing ? 'Pause' : 'Play'; };
+  playBtn.addEventListener('click', () => { playing = !playing; syncPlay(); });
+  const speeds = [0.5, 1, 2];
+  const speedBtn = document.getElementById('speed');
+  speedBtn.addEventListener('click', () => { speed = speeds[(speeds.indexOf(speed) + 1) % speeds.length]; speedBtn.textContent = `${speed}×`; });
+  document.getElementById('reset').addEventListener('click', () => { yaw = 0; pitch = 0; zoom = 1; });
+
+  const canvas = renderer.domElement;
+  let drag = null;
+  canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    yaw -= (e.clientX - drag.x) * 0.006;
+    pitch = Math.max(-1.2, Math.min(1.2, pitch - (e.clientY - drag.y) * 0.006));
+    drag = { x: e.clientX, y: e.clientY };
+  });
+  const endDrag = () => (drag = null);
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoom = Math.max(0.4, Math.min(2.2, zoom * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+
+  let startShape = 'wiggly';
+  try { startShape = localStorage.getItem('tower:shape') || 'wiggly'; } catch (e) { /* default */ }
+  chooseShape(startShape);
+  setToggle(floorBtn, true, applyFloor);
+  setToggle(blocksBtn, true, applyBlocks);
+  camPos.copy(desiredCamera());
+  syncPlay();
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>

@@ -24,10 +24,6 @@
 
       <main class="layout">
         <section class="stage" aria-label="Player">
-          <div class="segmented view-switch" id="view-switch" role="radiogroup" aria-label="View">
-            <button type="button" role="radio" data-view="helix">Double helix</button>
-            <button type="button" role="radio" data-view="protein">Gene → protein</button>
-          </div>
           <div class="helix" id="helix">
             <div class="scene-labels" id="scene-labels" aria-hidden="true"></div>
             <p class="caveat" id="caveat">Idealised B-DNA diagram, not a measured structure</p>
@@ -60,17 +56,19 @@
           </div>
         </section>
 
-        <aside class="controls" aria-label="Settings">
+        <aside class="controls" aria-label="Choose DNA">
           <section class="group">
-            <h2>Sequence</h2>
             <label class="field">
-              <span>Sample gene</span>
+              <span>Gene</span>
               <select id="sample"></select>
             </label>
             <p class="hint" id="sample-about"></p>
-            <details class="import" id="import">
-              <summary>Paste or open your own FASTA</summary>
-              <textarea id="fasta-input" rows="5" spellcheck="false" placeholder=">my_gene&#10;ATGGCCCTGTGGATGCGC…"></textarea>
+            <button type="button" class="btn btn-dashed" id="import-toggle" aria-expanded="false" aria-controls="import">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+              Use your own DNA (FASTA)
+            </button>
+            <div class="import" id="import" hidden>
+              <textarea id="fasta-input" rows="5" spellcheck="false" aria-label="FASTA sequence" placeholder=">my_gene&#10;ATGGCCCTGTGGATGCGC…"></textarea>
               <div class="import-actions">
                 <button id="fasta-load" class="btn">Load sequence</button>
                 <label class="btn btn-ghost file-btn">
@@ -79,7 +77,7 @@
                 </label>
               </div>
               <p class="hint">You can also drop a file anywhere on the page. Files are read locally and never uploaded.</p>
-            </details>
+            </div>
             <label class="field" id="record-field" hidden>
               <span>Record</span>
               <select id="record"></select>
@@ -88,11 +86,90 @@
             <p class="meta" id="seq-meta"></p>
           </section>
 
-          <section class="group">
-            <h2>Mapping</h2>
+          <section class="group sound-summary" id="sound-summary">
+            <h2 id="sound-summary-title">This gene’s sound</h2>
+            <p class="sound-summary-text" id="sound-summary-text"></p>
+          </section>
+
+          <button type="button" class="btn more-settings" id="settings-open" aria-haspopup="dialog" aria-controls="settings">
+            <span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              More settings
+            </span>
+            <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m9 6 6 6-6 6"/></svg>
+          </button>
+        </aside>
+      </main>
+
+      <div class="settings-backdrop" id="settings-backdrop" hidden></div>
+      <section class="settings" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+        <header class="settings-head">
+          <button type="button" class="btn-icon" id="settings-back" aria-label="Back to all settings" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m15 6-6 6 6 6"/></svg>
+          </button>
+          <h2 id="settings-title">Settings</h2>
+          <button type="button" class="btn-icon" id="settings-close" aria-label="Close settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </header>
+
+        <div class="settings-body">
+          <div class="settings-list" id="settings-list">
+            <h3 class="set-group-title" id="sound-group-title">This gene’s sound</h3>
+            <div class="set-group">
+              <button type="button" class="set-row" data-page="keyscale" data-sig="key scale"><span>Key and scale</span><span class="set-value" id="v-keyscale"></span></button>
+              <button type="button" class="set-row" data-page="tempo" data-sig="tempo"><span>Tempo</span><span class="set-value" id="v-tempo"></span></button>
+              <button type="button" class="set-row" data-page="instrument" data-sig="instrument"><span>Instrument</span><span class="set-value" id="v-instrument"></span></button>
+              <button type="button" class="set-row" data-page="drums" data-sig="beat"><span>Drums</span><span class="set-value" id="v-beat"></span></button>
+              <button type="button" class="set-row" data-page="drum-level" id="drum-level-field"><span>Drum volume</span><span class="set-value" id="v-drum-level"></span></button>
+              <label class="set-row set-switch"><span>Faithful mode <small>all 12 notes, no scale</small></span><input type="checkbox" role="switch" id="faithful" /></label>
+            </div>
+            <p class="set-note" id="sound-note"></p>
+            <button type="button" class="btn btn-ghost set-reset" id="sig-reset" hidden></button>
+
+            <h3 class="set-group-title">Reading the DNA</h3>
+            <div class="set-group">
+              <button type="button" class="set-row" data-page="mapping"><span>Mapping</span><span class="set-value" id="v-mapping"></span></button>
+              <button type="button" class="set-row" data-page="frame" id="frame-field"><span>Reading frame</span><span class="set-value" id="v-frame"></span></button>
+            </div>
+
+            <h3 class="set-group-title">Display</h3>
+            <div class="set-group">
+              <button type="button" class="set-row" data-page="view"><span>View</span><span class="set-value" id="v-view"></span></button>
+              <label class="set-row set-switch"><span>Show the biology <small>codons, amino acids, why it sounds this way</small></span><input type="checkbox" role="switch" id="show-bio" /></label>
+            </div>
+          </div>
+
+          <div class="settings-page" data-page="keyscale" data-title="Key and scale" hidden>
+            <label class="field"><span>Key</span><select id="key"></select></label>
+            <label class="field"><span>Scale</span><select id="scale"></select></label>
+            <p class="hint">Faithful mode ignores the scale and uses all 12 notes.</p>
+          </div>
+          <div class="settings-page" data-page="tempo" data-title="Tempo" hidden>
+            <label class="field">
+              <span>Tempo <output id="tempo-out">110</output> BPM</span>
+              <input type="range" id="tempo" min="50" max="220" step="1" value="110" />
+            </label>
+          </div>
+          <div class="settings-page" data-page="instrument" data-title="Instrument" hidden>
+            <label class="field"><span>Instrument</span><select id="instrument"></select></label>
+          </div>
+          <div class="settings-page" data-page="drums" data-title="Drums" hidden>
+            <label class="field"><span>Percussion</span><select id="beat"></select></label>
+            <p class="hint" id="beat-about"></p>
+          </div>
+          <div class="settings-page" data-page="drum-level" data-title="Drum volume" hidden>
+            <label class="field">
+              <span>Drum volume <output id="drum-level-out">70</output>%</span>
+              <input type="range" id="drum-level" min="0" max="100" step="1" value="70" />
+            </label>
+          </div>
+          <div class="settings-page" data-page="mapping" data-title="Mapping" hidden>
             <div class="segmented" id="mapping" role="radiogroup" aria-label="Mapping"></div>
             <p class="hint" id="mapping-summary"></p>
-            <label class="field" id="frame-field">
+          </div>
+          <div class="settings-page" data-page="frame" data-title="Reading frame" hidden>
+            <label class="field">
               <span>Reading frame</span>
               <select id="frame">
                 <option value="auto">Auto (from first ATG)</option>
@@ -101,63 +178,16 @@
                 <option value="2">Frame 3</option>
               </select>
             </label>
-          </section>
-
-          <section class="group sound-group">
-            <h2>Sound</h2>
-            <div class="sig-card" id="sig-card">
-              <p class="sig-title" id="sig-title"></p>
-              <p class="sig-sub" id="sig-sub"></p>
-              <ul class="sig-chips" id="sig-chips" aria-label="Current sound"></ul>
-              <div class="sig-actions">
-                <button type="button" class="btn sig-custom" id="sig-custom" aria-expanded="false" aria-controls="sound-custom">🎛 Make it your own</button>
-                <button type="button" class="btn btn-ghost" id="sig-reset" hidden></button>
-              </div>
+          </div>
+          <div class="settings-page" data-page="view" data-title="View" hidden>
+            <div class="segmented view-switch" id="view-switch" role="radiogroup" aria-label="View">
+              <button type="button" role="radio" data-view="protein">Gene → protein</button>
+              <button type="button" role="radio" data-view="tower">3D scene</button>
+              <button type="button" role="radio" data-view="helix">Double helix</button>
             </div>
-            <div class="sound-custom" id="sound-custom" hidden>
-              <p class="override-note">Your settings override the gene's sound. Changed settings are highlighted; loading a sequence brings back its own sound.</p>
-              <div class="row">
-                <label class="field" data-sig="key">
-                  <span>Key</span>
-                  <select id="key"></select>
-                </label>
-                <label class="field grow" data-sig="scale">
-                  <span>Scale</span>
-                  <select id="scale"></select>
-                </label>
-              </div>
-              <label class="field" data-sig="tempo">
-                <span>Tempo <output id="tempo-out">110</output> BPM</span>
-                <input type="range" id="tempo" min="50" max="220" step="1" value="110" />
-              </label>
-              <label class="field" data-sig="instrument">
-                <span>Instrument</span>
-                <select id="instrument"></select>
-              </label>
-              <label class="field" data-sig="beat">
-                <span>Percussion</span>
-                <select id="beat"></select>
-              </label>
-              <p class="hint" id="beat-about"></p>
-            </div>
-            <label class="toggle">
-              <input type="checkbox" id="faithful" />
-              <span>Faithful mode <small>(all 12 notes, no scale)</small></span>
-            </label>
-            <label class="field" id="drum-level-field" hidden>
-              <span>Drum volume <output id="drum-level-out">70</output>%</span>
-              <input type="range" id="drum-level" min="0" max="100" step="1" value="70" />
-            </label>
-          </section>
-
-          <section class="group">
-            <label class="toggle">
-              <input type="checkbox" id="show-bio" />
-              <span>Show the biology <small>(codons, amino acids, start/stop)</small></span>
-            </label>
-          </section>
-        </aside>
-      </main>
+          </div>
+        </div>
+      </section>
 
       <div class="drop-overlay" id="drop-overlay" hidden>Drop a FASTA file to play it</div>
     </div>

@@ -12,8 +12,6 @@ export interface DrumHit {
   velocity: number;
   /** Pitch for tuned voices (808 and toms), as a MIDI note. */
   midi?: number;
-  /** Hi-hat brightness, 0 (dark) .. 1 (bright). Used by slices; plain hats leave it unset. */
-  tone?: number;
 }
 
 export type BeatId =
@@ -23,8 +21,11 @@ export type BeatId =
   | 'halftime'
   | 'breakbeat'
   | 'shuffle'
+  | 'boomBap'
+  | 'dembow'
+  | 'dnb'
+  | 'tomGroove'
   | 'trap'
-  | 'trapSlices'
   | 'sequence';
 
 export interface Beat {
@@ -43,15 +44,25 @@ export const BEATS: Beat[] = [
   { id: 'breakbeat', name: 'Breakbeat', description: 'Syncopated kicks, ghost snares and busy hi-hats.' },
   { id: 'shuffle', name: 'Shuffle', description: 'A swung, bouncing feel, with off-beats pushed late.' },
   {
+    id: 'boomBap',
+    name: 'Boom bap',
+    description: '90s hip-hop: a punchy kick, a hard snare on 2 and 4, and lazily swung hi-hats.',
+  },
+  { id: 'dembow', name: 'Dembow', description: 'The reggaeton rhythm: a kick on every beat and a snare in a 3-3-2 pattern.' },
+  {
+    id: 'dnb',
+    name: 'Drum and bass',
+    description: 'A fast two-step beat at double speed: kick, snare and rapid hi-hats.',
+  },
+  {
+    id: 'tomGroove',
+    name: 'Tom groove',
+    description: 'Rolling toms tuned to your key over a deep kick, with soft, shaker-like hi-hats.',
+  },
+  {
     id: 'trap',
     name: '808 trap',
     description: 'Half-time trap: a booming 808 bass tuned to your key, a clap on beat 3 and rapid hi-hat rolls.',
-  },
-  {
-    id: 'trapSlices',
-    name: '808 trap (slices)',
-    description:
-      'The 808 trap beat with occasional hi-hat slices: stuttering 32nd, triplet and 64th-note bursts that sweep up or down in tone.',
   },
   {
     id: 'sequence',
@@ -63,33 +74,63 @@ export const BEATS: Beat[] = [
 
 type PatternBeat = Exclude<BeatId, 'off'>;
 
+interface Grid {
+  /** Per voice, a step pattern; longer than 16 steps means a phrase of several bars. */
+  voices: Partial<Record<DrumVoice, string>>;
+  /** Length of one step in beats (default a sixteenth note, 0.25). */
+  step?: number;
+  /** How late every second step lands, in beats (swing). */
+  swing?: number;
+}
+
+type GridBeat = 'steady' | 'backbeat' | 'halftime' | 'breakbeat' | 'boomBap' | 'dembow' | 'dnb';
+
 /**
- * One bar of 16 sixteenth-note steps per voice. Numbers are velocities
- * (0 = silent); written as strings so the grooves are easy to read and edit.
+ * Step patterns per voice. Numbers are velocities (0 = silent); written as
+ * strings so the grooves are easy to read and edit.
  * Digits: 0–9 → velocity 0–0.9 (9 is loudest).
  */
-const GRID: Record<'steady' | 'backbeat' | 'halftime' | 'breakbeat', Partial<Record<DrumVoice, string>>> = {
+const GRID: Record<GridBeat, Grid> = {
   //                 1 . . . 2 . . . 3 . . . 4 . . .
-  steady: {
+  steady: { voices: {
     kick:    '9000900090009000',
     snare:   '0000800000008000',
     hat:     '0060006000600060',
-  },
-  backbeat: {
+  } },
+  backbeat: { voices: {
     kick:    '9000000080600000',
     snare:   '0000900000009000',
     hat:     '6040604060406040',
-  },
-  halftime: {
+  } },
+  halftime: { voices: {
     kick:    '9000000000700000',
     snare:   '0000000090000000',
     hat:     '5030503050305030',
-  },
-  breakbeat: {
+  } },
+  breakbeat: { voices: {
     kick:    '9000000900800000',
     snare:   '0000900200009002',
     hat:     '6363636363636363',
-  },
+  } },
+  // Two-bar phrase, with every second sixteenth pushed late for a laid-back swing.
+  //                 1 . . . 2 . . . 3 . . . 4 . . . 1 . . . 2 . . . 3 . . . 4 . . .
+  boomBap: { swing: 0.06, voices: {
+    kick:    '90000000907000009000000090700050',
+    snare:   '00009000000090020000900000009000',
+    hat:     '60406040604060406040604060406045',
+  } },
+  // Snare on the 3-3-2 dembow rhythm.
+  dembow: { voices: {
+    kick:    '9000900090009000',
+    snare:   '0008008000080080',
+    hat:     '0050005000500050',
+  } },
+  // Two-step at double time: each step is a 32nd note, so one pass of the pattern lasts two beats.
+  dnb: { step: 0.125, voices: {
+    kick:    '9000000000800000',
+    snare:   '0000900200009000',
+    hat:     '6040604060406040',
+  } },
 };
 
 const BAR = 4; // beats per bar (4/4)
@@ -110,23 +151,18 @@ function run(add: Add, voice: DrumVoice, from: number, n: number, step: number, 
   for (let k = 0; k < n; k++) add(from + k * step, voice, v0 + ((v1 - v0) * k) / Math.max(1, n - 1), extra?.(k));
 }
 
-/** Small deterministic hash → 0..1, so "random" choices are the same every time. */
-function rand(a: number, b: number): number {
-  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35);
-  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
-  h ^= h >>> 13;
-  return (h >>> 0) / 4294967296;
-}
-
 // ---------- Main grooves ----------
 
-function fromGrid(grid: Partial<Record<DrumVoice, string>>, totalBeats: number): DrumHit[] {
+function fromGrid(grid: Grid, totalBeats: number): DrumHit[] {
   const { hits, add } = collector();
-  for (let bar = 0; bar * BAR < totalBeats; bar++) {
-    for (const [voice, pattern] of Object.entries(grid) as [DrumVoice, string][]) {
-      for (let s = 0; s < 16; s++) {
+  const step = grid.step ?? STEP;
+  const swing = grid.swing ?? 0;
+  for (const [voice, pattern] of Object.entries(grid.voices) as [DrumVoice, string][]) {
+    const phrase = pattern.length * step;
+    for (let start = 0; start < totalBeats; start += phrase) {
+      for (let s = 0; s < pattern.length; s++) {
         const v = Number(pattern[s]);
-        if (v > 0) add(bar * BAR + s * STEP, voice, v / 10);
+        if (v > 0) add(start + s * step + (s % 2 ? swing : 0), voice, v / 10);
       }
     }
   }
@@ -184,40 +220,23 @@ function trap(totalBeats: number, key: number): DrumHit[] {
   return hits;
 }
 
-/** A stutter burst: fast hats whose tone sweeps up or down. */
-function slice(add: Add, from: number, length: number, step: number, up: boolean) {
-  const n = Math.round(length / step);
-  run(add, 'hat', from, n, step, 0.35, 0.8, (k) => {
-    const p = k / Math.max(1, n - 1);
-    return { tone: up ? 0.1 + 0.9 * p : 1 - 0.9 * p };
-  });
-}
+/** [step, tom (0 = high … 3 = low), velocity] for each tom hit in a bar. */
+type TomPart = [number, number, number][];
+const TOM_BAR_A: TomPart = [[0, 3, 0.9], [3, 3, 0.6], [6, 2, 0.8], [8, 3, 0.85], [10, 2, 0.6], [11, 3, 0.6], [14, 1, 0.75]];
+const TOM_BAR_B: TomPart = [[0, 3, 0.9], [3, 3, 0.6], [6, 2, 0.8], [8, 3, 0.85], [12, 1, 0.7], [13, 1, 0.6], [14, 0, 0.8], [15, 0, 0.85]];
 
-const SLICE_STEPS = [0.125, 1 / 12, 0.0625]; // 32nds, 32nd triplets, 64ths
-const SLICE_SPOTS = [1.5, 2.5, 3, 3.5];
-
-/**
- * The trap groove plus occasional hi-hat slices. About half the bars get one
- * slice at a varied spot; its ordinary hats are removed, and sometimes the hats
- * drop out for a moment straight after, for a choppy, edited feel.
- */
-function trapSlices(totalBeats: number, key: number): DrumHit[] {
-  let hits = trap(totalBeats, key);
-  const { hits: extra, add } = collector();
-  const cleared: [number, number][] = [];
+/** Two-bar tom pattern tuned to the key, over a deep kick and soft shaker-like hats. */
+function tomGroove(totalBeats: number, toms: number[]): DrumHit[] {
+  const { hits, add } = collector();
+  add(0, 'crash', 0.5);
   for (let bar = 0; bar * BAR < totalBeats; bar++) {
-    if (rand(bar, 1) < 0.45) continue;
     const t = bar * BAR;
-    const at = t + SLICE_SPOTS[Math.floor(rand(bar, 2) * SLICE_SPOTS.length)];
-    const len = at - t >= 3.5 ? 0.5 : rand(bar, 3) < 0.5 ? 0.5 : 0.75;
-    const step = SLICE_STEPS[Math.floor(rand(bar, 4) * SLICE_STEPS.length)];
-    slice(add, at, len, step, rand(bar, 5) < 0.5);
-    let end = at + len;
-    if (rand(bar, 6) < 0.4 && end + 0.5 <= t + BAR) end += 0.5; // brief hat dropout
-    cleared.push([at, end]);
+    for (const [step, tom, v] of bar % 2 ? TOM_BAR_B : TOM_BAR_A) add(t + step * STEP, 'tom', v, { midi: toms[tom] });
+    add(t, 'kick', 0.85);
+    add(t + 2, 'kick', 0.75);
+    for (let s = 0; s < 16; s++) add(t + s * STEP, 'hat', s % 2 ? 0.2 : 0.32);
   }
-  hits = hits.filter((h) => !(h.voice === 'hat' && cleared.some(([a, b]) => h.time >= a - 1e-9 && h.time < b - 1e-9)));
-  return hits.concat(extra);
+  return hits;
 }
 
 /** Drums driven by the sequence itself, one hit per note event. */
@@ -305,13 +324,26 @@ const INTRO: Record<PatternBeat, Fill> = {
     run(add, 'hat', t + 3, 8, 0.125, 0.55, 0.9);
     add(t + 3.5, 'sub808', 0.6, { midi: c.root + 7 });
   },
-  // Riser made of slices: the tone sweeps up across the whole bar.
-  trapSlices: (add, t) => {
-    slice(add, t, 2, 0.25, true);
-    slice(add, t + 2, 1, 0.125, true);
-    slice(add, t + 3, 1, 0.0625, true);
-    add(t + 2, 'clap', 0.6);
+  // Hi-hat count-in, then a snare pick-up into the groove.
+  boomBap: (add, t) => {
+    run(add, 'hat', t, 3, 1, 0.6, 0.6);
+    add(t + 3, 'snare', 0.6);
+    add(t + 3.5, 'snare', 0.9);
+    add(t + 3.75, 'kick', 0.8);
   },
+  // Kicks on the beat with the 3-3-2 snare already in.
+  dembow: (add, t) => {
+    run(add, 'kick', t, 4, 1, 0.85, 0.9);
+    for (const at of [0.75, 1.5, 2.75, 3.5]) add(t + at, 'snare', 0.75);
+    add(t + 3.25, 'hat', 0.5);
+  },
+  // A snare roll that doubles in speed.
+  dnb: (add, t) => {
+    run(add, 'snare', t, 8, 0.25, 0.3, 0.6);
+    run(add, 'snare', t + 2, 16, 0.125, 0.5, 0.95);
+  },
+  // Toms climbing from low to high.
+  tomGroove: (add, t, c) => run(add, 'tom', t, 8, 0.5, 0.6, 0.9, (k) => ({ midi: c.toms[3 - Math.floor(k / 2)] })),
   // The first bases of the gene, played on tuned toms (A low … T high).
   sequence: (add, t, c) => {
     [...c.firstBases].forEach((b, k) => {
@@ -341,11 +373,30 @@ const OUTRO: Record<PatternBeat, Fill> = {
     add(t + 1, 'sub808', 0.85, { midi: c.root + 5 });
     add(t + 1, 'clap', 0.8);
   },
-  trapSlices: (add, t, c) => {
-    slice(add, t, 1, 0.0625, false);
-    slice(add, t + 1, 1, 1 / 12, true);
-    add(t, 'sub808', 0.85, { midi: c.root + 3 });
-    add(t + 1, 'clap', 0.8);
+  boomBap: (add, t) => {
+    add(t, 'snare', 0.85);
+    add(t + 0.5, 'kick', 0.8);
+    add(t + 0.75, 'snare', 0.4);
+    add(t + 1, 'snare', 0.9);
+    add(t + 1.25, 'kick', 0.7);
+    add(t + 1.5, 'snare', 0.95);
+  },
+  dembow: (add, t, c) => {
+    add(t, 'kick', 0.85);
+    add(t + 1, 'kick', 0.85);
+    for (const at of [0, 0.75, 1.5]) add(t + at, 'snare', 0.8);
+    add(t + 1.75, 'tom', 0.85, { midi: c.toms[0] });
+  },
+  dnb: (add, t) => {
+    run(add, 'snare', t, 16, 0.125, 0.4, 0.95);
+    add(t, 'kick', 0.85);
+    add(t + 1, 'kick', 0.85);
+  },
+  tomGroove: (add, t, c) => {
+    const hits: [number, number][] = [[0, 3], [0.5, 2], [0.75, 2], [1, 1], [1.25, 1], [1.5, 0], [1.625, 0], [1.75, 0], [1.875, 0]];
+    for (const [at, tom] of hits) add(t + at, 'tom', 0.65 + 0.15 * at, { midi: c.toms[tom] });
+    add(t, 'kick', 0.85);
+    add(t + 1, 'kick', 0.8);
   },
   // The last bases on toms, in a rhythm the gene sets: A/G (purines) are 8ths, C/T (pyrimidines) 16ths.
   sequence: (add, t, c) => {
@@ -363,7 +414,8 @@ const OUTRO: Record<PatternBeat, Fill> = {
 function finale(add: Add, t: number, beat: PatternBeat, c: FillContext) {
   add(t, 'crash', 0.85);
   add(t, 'kick', 0.95);
-  if (beat === 'trap' || beat === 'trapSlices') add(t, 'sub808', 0.95, { midi: c.root });
+  if (beat === 'trap') add(t, 'sub808', 0.95, { midi: c.root });
+  else if (beat === 'tomGroove') add(t, 'tom', 0.95, { midi: c.toms[3] });
   else add(t, 'snare', 0.6);
 }
 
@@ -390,6 +442,8 @@ function withFills(beat: PatternBeat, body: DrumHit[], totalBeats: number, c: Fi
  */
 export function drumHits(beat: BeatId, events: NoteEvent[], totalBeats: number, seq: string, key = 0): DrumHit[] {
   if (beat === 'off') return [];
+  const tomRoot = 43 + key; // toms sit around G2–F♯3, tuned to the key
+  const toms = [tomRoot + 12, tomRoot + 7, tomRoot + 3, tomRoot];
   let body: DrumHit[];
   switch (beat) {
     case 'shuffle':
@@ -398,8 +452,8 @@ export function drumHits(beat: BeatId, events: NoteEvent[], totalBeats: number, 
     case 'trap':
       body = trap(totalBeats, key);
       break;
-    case 'trapSlices':
-      body = trapSlices(totalBeats, key);
+    case 'tomGroove':
+      body = tomGroove(totalBeats, toms);
       break;
     case 'sequence':
       body = fromSequence(events, seq);
@@ -407,11 +461,10 @@ export function drumHits(beat: BeatId, events: NoteEvent[], totalBeats: number, 
     default:
       body = fromGrid(GRID[beat], totalBeats);
   }
-  const tomRoot = 43 + key; // toms sit around G2–F♯3, tuned to the key
   const first = events[0]?.start ?? 0;
   const last = events.length ? events[events.length - 1].start : 0;
   const context: FillContext = {
-    toms: [tomRoot + 12, tomRoot + 7, tomRoot + 3, tomRoot],
+    toms,
     root: 24 + key,
     firstBases: seq.slice(first, first + 16),
     lastBases: seq.slice(Math.max(0, last - 12), last),

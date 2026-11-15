@@ -2,7 +2,7 @@
 
 Play DNA as music while a 3D double helix scrolls and pulses in time. Everything runs locally in the browser; no sequence data is uploaded.
 
-See [the design write-up](DNA%20Music%20Player%20App%20Design%20Write-up.md) for the full plan and [the changelog](CHANGELOG.md) for what's in each version. Current version: 0.3.0 (percussion and all seven modes).
+See [the design write-up](DNA%20Music%20Player%20App%20Design%20Write-up.md) for the full plan and [the changelog](CHANGELOG.md) for what's in each version. Current version: 0.4.0 (each sequence has its own sound).
 
 ## Commands
 
@@ -18,6 +18,7 @@ npm run build      # typecheck + production build into dist/
 | Path | What it is |
 |---|---|
 | `src/core/` | Pure, unit-tested logic: FASTA parsing, genetic code, scales, mappings, playhead maths, sample genes |
+| `src/core/signature.ts` | Sound signature: picks key, scale, instrument, beat and tempo from properties of the sequence |
 | `src/core/mappings.ts` | The mapping engine. Each mapping is `(sequence, settings) → NoteEvent[]`; add new ones to `MAPPINGS` |
 | `src/audio/` | Tone.js playback. The transport clock is the single source of time |
 | `src/core/protein.ts` | Protein from the reading frame, Chou–Fasman-style secondary structure estimate, amino-acid property classes |

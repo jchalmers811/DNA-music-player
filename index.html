@@ -56,6 +56,7 @@
             <div class="bio-now" id="bio-now"></div>
             <dl class="bio-stats" id="bio-stats"></dl>
             <p class="bio-mapping" id="bio-mapping"></p>
+            <div class="bio-why" id="bio-why"></div>
           </div>
         </section>
 
@@ -102,35 +103,47 @@
             </label>
           </section>
 
-          <section class="group">
+          <section class="group sound-group">
             <h2>Sound</h2>
-            <div class="row">
-              <label class="field">
-                <span>Key</span>
-                <select id="key"></select>
+            <div class="sig-card" id="sig-card">
+              <p class="sig-title" id="sig-title"></p>
+              <p class="sig-sub" id="sig-sub"></p>
+              <ul class="sig-chips" id="sig-chips" aria-label="Current sound"></ul>
+              <div class="sig-actions">
+                <button type="button" class="btn sig-custom" id="sig-custom" aria-expanded="false" aria-controls="sound-custom">🎛 Make it your own</button>
+                <button type="button" class="btn btn-ghost" id="sig-reset" hidden></button>
+              </div>
+            </div>
+            <div class="sound-custom" id="sound-custom" hidden>
+              <p class="override-note">Your settings override the gene's sound. Changed settings are highlighted; loading a sequence brings back its own sound.</p>
+              <div class="row">
+                <label class="field" data-sig="key">
+                  <span>Key</span>
+                  <select id="key"></select>
+                </label>
+                <label class="field grow" data-sig="scale">
+                  <span>Scale</span>
+                  <select id="scale"></select>
+                </label>
+              </div>
+              <label class="field" data-sig="tempo">
+                <span>Tempo <output id="tempo-out">110</output> BPM</span>
+                <input type="range" id="tempo" min="50" max="220" step="1" value="110" />
               </label>
-              <label class="field grow">
-                <span>Scale</span>
-                <select id="scale"></select>
+              <label class="field" data-sig="instrument">
+                <span>Instrument</span>
+                <select id="instrument"></select>
               </label>
+              <label class="field" data-sig="beat">
+                <span>Percussion</span>
+                <select id="beat"></select>
+              </label>
+              <p class="hint" id="beat-about"></p>
             </div>
             <label class="toggle">
               <input type="checkbox" id="faithful" />
               <span>Faithful mode <small>(all 12 notes, no scale)</small></span>
             </label>
-            <label class="field">
-              <span>Tempo <output id="tempo-out">110</output> BPM</span>
-              <input type="range" id="tempo" min="50" max="220" step="1" value="110" />
-            </label>
-            <label class="field">
-              <span>Instrument</span>
-              <select id="instrument"></select>
-            </label>
-            <label class="field">
-              <span>Percussion</span>
-              <select id="beat"></select>
-            </label>
-            <p class="hint" id="beat-about"></p>
             <label class="field" id="drum-level-field" hidden>
               <span>Drum volume <output id="drum-level-out">70</output>%</span>
               <input type="range" id="drum-level" min="0" max="100" step="1" value="70" />

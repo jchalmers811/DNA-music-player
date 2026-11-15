@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0: Every gene has its own sound
+
+- Each sequence now chooses its own key, scale, instrument, drum beat and tempo, so every gene has a sound of its own. Load the same sequence again and you hear the same sound.
+- Similar sequences sound similar. The choices come from properties of the DNA and its protein, not a checksum: GC content sets how bright the scale is, the balance of G and C sets the key, charged amino acids set the tempo, water-avoiding ones make the drums heavier, and the protein's estimated shape picks the instrument. A one-base change, like the sickle-cell mutation, barely changes the sound.
+- Each choice is compared with 795 real human genes, so genes spread evenly across every key, scale, instrument, beat and tempo instead of bunching up.
+- Sequences without a real protein (no ATG, or under 30 amino acids) use properties of the DNA bases alone.
+- Four new drum beats: **Boom bap** (90s hip-hop with swung hi-hats), **Dembow** (the reggaeton 3-3-2 rhythm), **Drum and bass** (a double-speed two-step) and **Tom groove** (rolling toms tuned to the key). Each has its own intro and outro fill. The "808 trap (slices)" beat has been removed; the plain 808 trap beat stays.
+- A new sound card shows the gene's sound. **Make it your own** opens the controls; anything you change is highlighted and overrides the gene's sound, and **Back to the gene's sound** undoes it. Loading a sequence always starts from its own sound.
+- "Show the biology" explains why the gene sounds the way it does.
+- Seven more sample genes, from NCBI RefSeq: haemoglobin alpha, myoglobin, p53, lysozyme, the SARS-CoV-2 spike protein, and **human and mouse cytochrome c**. The cytochrome c pair is 91% identical, and they sound almost the same, which shows similar sequences getting similar sounds.
+- The protein view's note now says you can drag to turn the protein once it is complete.
+
 ## 0.3.0: Percussion and modes
 
 - All seven modes in the Scale menu: Ionian (major), Dorian, Phrygian, Lydian, Mixolydian, Aeolian (natural minor) and Locrian.

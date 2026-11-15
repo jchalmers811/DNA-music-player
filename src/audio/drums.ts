@@ -1,10 +1,8 @@
 import * as Tone from 'tone';
 import type { DrumHit } from '../core/drums';
 
-/** Plain hi-hats sit at this cutoff; slices sweep between HAT_DARK and HAT_BRIGHT. */
+/** Hi-hats are high-passed noise. */
 const HAT_CUTOFF = 8000;
-const HAT_DARK = 3500;
-const HAT_BRIGHT = 12000;
 
 /**
  * A synthesised drum kit: nothing to download. Each voice is monophonic, like
@@ -132,13 +130,9 @@ export class DrumKit {
       case 'clap':
         this.clap.triggerAttackRelease(0.14, time, velocity);
         break;
-      case 'hat': {
-        // Every hat sets its own cutoff, so a slice's sweep never leaks into the plain hats after it.
-        const cutoff = hit.tone === undefined ? HAT_CUTOFF : HAT_DARK * (HAT_BRIGHT / HAT_DARK) ** hit.tone;
-        this.hatFilter.frequency.setValueAtTime(cutoff, time);
-        this.hat.triggerAttackRelease(hit.tone === undefined ? 0.035 : 0.025, time, velocity);
+      case 'hat':
+        this.hat.triggerAttackRelease(0.035, time, velocity);
         break;
-      }
       case 'tom':
         this.tom.triggerAttackRelease(Tone.Frequency(midi ?? 45, 'midi').toFrequency(), 0.3, time, velocity);
         break;

@@ -103,6 +103,30 @@ Let the user edit a base and hear the change immediately, for example a point mu
 
 Across all modes, quantise to a chosen scale and key, fix a time signature, and let the user pick the scale (minor pentatonic, Dorian and so on). Constraints are what turn a stream of data into something listenable. Offer MIDI export so results can be taken into a DAW.
 
+### 4.15 Sound signature (built, v0.4.0)
+
+Every sequence chooses its own key, scale, instrument, drum beat and tempo, so each gene has a sound of its own without the user changing anything. The same sequence always gets the same sound. The mapping, reading frame, faithful mode and volumes are not part of the signature: they control how a sequence is read and heard, not what it sounds like.
+
+**Similar sequences sound similar.** A checksum would make every sequence unique, but a one-base change would sound completely unrelated. Instead, each choice comes from a smooth property of the sequence, so a small edit only nudges it:
+
+| Setting | Comes from | Direction |
+|---|---|---|
+| Scale | GC content | Higher → brighter (Lydian, Major, Major pentatonic, Mixolydian, Dorian, Minor pentatonic, Minor, Phrygian) |
+| Key | GC skew, (G−C)/(G+C) | Walks around the circle of fifths; an average gene is in C |
+| Tempo | Share of charged amino acids | More → livelier, 80–140 BPM |
+| Drum beat | Share of water-avoiding amino acids | More → heavier (Shuffle, Steady, Dembow, Backbeat, From the sequence, Tom groove, Breakbeat, Drum and bass, Boom bap, Half-time, 808 trap) |
+| Instrument | Estimated helix vs strand share | Strand-rich → plucky (bell, marimba); helix-rich → flowing (keys, pad) |
+
+Each option list is ordered so neighbours sound alike, so a nudge across a cut-off lands on a related option. Cut-offs come from how each property is spread across typical human genes, measured on 795 human protein-coding genes from NCBI RefSeq Select: the app stores the value at every 5% step, so each option covers an equal share of real genes. Across those genes, every key, scale, instrument and beat gets a near-equal share, and 795 genes give 670 different combinations. (The DNA-only fallbacks have no reference set yet and use a rough mean and standard deviation.) Locrian and "Off" are never chosen; users can still pick them.
+
+The signature always uses the automatic reading frame, so changing the frame doesn't change a gene's sound. If there is no ATG or the protein is under 30 amino acids, tempo, drums and instrument come from DNA-only properties instead: GC variation across codon positions, the average run length of the same base, and how repetitive the sequence is.
+
+**Overriding it.** The Sound panel shows a card with the gene's sound ("Insulin's sound") and a prominent "Make it your own" button that reveals the controls, under a note that they override the gene's sound. Changed settings are highlighted, the card becomes "Your mix, based on Insulin", and a button returns to the gene's sound. Loading a sequence always starts from its own sound. "Show the biology" explains each choice in plain words.
+
+**Stability.** The algorithm lives in `src/core/signature.ts` as "signature v1". Tests pin the sample genes' sounds, so any change is deliberate; bump the version and note it in the changelog. Before 1.0, sounds may still change.
+
+**Later:** if too many genes sound alike, add a variety layer from a similarity-preserving hash of the sequence's k-mers (MinHash-style), so similar sequences still mostly match but unrelated genes with similar make-up spread apart.
+
 ## 5. The 3D double helix visual
 
 A 3D double helix that plays along with the music is a strong centrepiece, and it is reasonably easy to build.
@@ -230,7 +254,17 @@ Genetic data is among the most sensitive data a person has. Processing everythin
 - Gene-to-protein scene: DNA → RNA polymerase → mRNA → ribosome → amino-acid chain, synced to playback (see section 6). It includes the protein drawn as a tube coloured by amino-acid property, with the current residue highlighted, and a switch between this view and the helix, both sharing one playhead (one view at a time on mobile).
 - Rough in-browser fold estimate for any sequence, clearly labelled as illustrative
 
+**Version 0.3: percussion and modes (built)**
+
+- All seven modes, and synthesised percussion with fills and 808 trap beats
+
+**Version 0.4: sound signature (built)**
+
+- Each sequence chooses its own key, scale, instrument, beat and tempo; similar sequences sound similar (see section 4.15). Manual controls override it.
+
 **Possible features** (not yet scheduled)
+
+- k-mer variety layer for the sound signature, if too many genes sound alike
 
 - Predicted 3D structures for the sample genes from the AlphaFold Database, replacing the rough fold when a sample is playing
 - Consumer raw-data (23andMe / Ancestry) and VCF import, with an overview mode for choosing a chromosome or region
@@ -246,13 +280,19 @@ Genetic data is among the most sensitive data a person has. Processing everythin
 - Extra visualisers such as a circular genome view
 - Opt-in online structure prediction (e.g. ESMFold) for user sequences, with a clear privacy warning
 
-## 10. Open decisions
+## 10. Decisions
 
-1. **Audience:** a general-audience curiosity and art toy, or an educational tool for students? This decides how much biology to surface.
-2. **Primary input:** the user's own consumer DNA data, or reference genes? The first is more personal; the second is simpler and safer for demos.
-3. **Platform:** web first for easy sharing, or mobile for a "play my genome" experience?
-4. **Sound design:** how much to favour pleasant, constrained music versus faithful, unconstrained sonification?
-5. **Online structure prediction:** offer an opt-in online service for accurate folds of user sequences, or stay strictly local and accept rough estimates?
+**Settled (November 2026)**
+
+1. **Audience:** both, layered. The app is clean by default, and "Show the biology" adds the detail for learners.
+2. **Platform:** mobile-friendly web from day one.
+3. **Sound design:** pleasant by default (quantised to a scale, and the sound signature never picks harsh options), with faithful mode as an option.
+4. **Sound signature:** property-based, so similar sequences sound similar, rather than a checksum (see section 4.15).
+
+**Still open**
+
+1. **Primary input:** the user's own consumer DNA data, or reference genes? The first is more personal; the second is simpler and safer for demos.
+2. **Online structure prediction:** offer an opt-in online service for accurate folds of user sequences, or stay strictly local and accept rough estimates?
 
 ## 11. Suggested next step
 

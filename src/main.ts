@@ -18,6 +18,7 @@ import {
   type ProteinChain,
 } from './core/protein';
 import { SAMPLES } from './core/samples';
+import { soundSignature, type SignatureSetting, type SoundSignature } from './core/signature';
 import type { Base, FrameSetting, MappingResult, MusicSettings, ScaleId } from './core/types';
 import { SequenceStrip } from './ui/strip';
 import { GeneScene, PROPERTY_COLORS } from './visual/geneScene';
@@ -27,7 +28,7 @@ type ViewId = 'helix' | 'protein';
 const VIEW_KEY = 'dna-music-player:view';
 const CAVEATS: Record<ViewId, string> = {
   helix: 'Idealised B-DNA diagram, not a measured structure',
-  protein: 'Simplified view. The protein shape is a rough estimate, not a prediction. Drag to turn it.',
+  protein: 'Simplified view. The protein shape is a rough estimate, not a prediction. Drag to turn it once the protein is complete.',
 };
 
 /** Longer inputs are truncated for now; window summarisation arrives in V2. */
@@ -75,6 +76,14 @@ const ui = {
   drumLevel: $<HTMLInputElement>('drum-level'),
   drumLevelOut: $('drum-level-out'),
   showBio: $<HTMLInputElement>('show-bio'),
+  sigCard: $('sig-card'),
+  sigTitle: $('sig-title'),
+  sigSub: $('sig-sub'),
+  sigChips: $('sig-chips'),
+  sigCustom: $<HTMLButtonElement>('sig-custom'),
+  sigReset: $<HTMLButtonElement>('sig-reset'),
+  soundCustom: $('sound-custom'),
+  bioWhy: $('bio-why'),
   dropOverlay: $('drop-overlay'),
   viewSwitch: $('view-switch'),
   caveat: $('caveat'),
@@ -85,6 +94,10 @@ const ui = {
 // ---------- State ----------
 const state = {
   name: '',
+  /** Short name for the sound card, e.g. "Insulin". */
+  soundName: '',
+  /** The sound this sequence chose for itself; the controls can override it. */
+  signature: null as SoundSignature | null,
   sequence: '',
   records: [] as FastaRecord[],
   mappingId: 'aminoAcid' as MappingId,
@@ -202,7 +215,7 @@ function setMessage(text: string, kind: '' | 'warn' | 'error' = '') {
   ui.seqMessage.className = `message ${kind}`;
 }
 
-function loadRecord(record: FastaRecord, name: string) {
+function loadRecord(record: FastaRecord, name: string, soundName: string) {
   let seq = record.sequence;
   if (seq.length > MAX_BASES) {
     seq = seq.slice(0, MAX_BASES);
@@ -216,7 +229,9 @@ function loadRecord(record: FastaRecord, name: string) {
   engine.stop();
   state.sequence = seq;
   state.name = name;
+  state.soundName = soundName;
   helix.setSequence(seq);
+  applySignature(); // every load starts from the sequence's own sound
   remap(false);
   if (wasPlaying) void engine.play();
 }
@@ -229,7 +244,7 @@ function loadSample(id: string) {
   ui.recordField.hidden = true;
   setMessage('');
   const { records } = parseFasta(sample.fasta);
-  loadRecord(records[0], sample.name);
+  loadRecord(records[0], sample.name, sample.soundName ?? sample.name.replace(/\s*\(.*\)$/, ''));
 }
 
 function loadText(text: string, sourceName: string) {
@@ -246,7 +261,7 @@ function loadText(text: string, sourceName: string) {
     );
     ui.recordField.hidden = records.length < 2;
     const r = records[0];
-    loadRecord(r, r.description ? `${r.id} ${r.description}` : r.id);
+    loadRecord(r, r.description ? `${r.id} ${r.description}` : r.id, r.id);
     // loadRecord may add a truncation warning; keep parse warnings too
     if (warnings.length && !ui.seqMessage.textContent.includes(warnings[0]))
       setMessage(`${warnings.join(' ')} ${ui.seqMessage.textContent}`, 'warn');
@@ -261,6 +276,121 @@ async function loadFile(file: File) {
     return;
   }
   loadText(await file.text(), file.name);
+}
+
+// ---------- Sound signature ----------
+const SETTING_LABELS: Record<SignatureSetting, string> = {
+  key: 'Key',
+  scale: 'Scale',
+  tempo: 'Tempo',
+  instrument: 'Instrument',
+  beat: 'Drums',
+};
+
+/** Set key, scale, tempo, instrument and beat to the current sequence's own sound. */
+function applySignature() {
+  const sig = soundSignature(state.sequence);
+  state.signature = sig;
+  state.settings.key = sig.key;
+  state.settings.scale = sig.scale;
+  state.tempo = sig.tempo;
+  state.instrument = sig.instrument;
+  state.beat = sig.beat;
+  engine.setTempo(sig.tempo);
+  engine.setInstrument(sig.instrument);
+  ui.key.value = String(sig.key);
+  ui.scale.value = sig.scale;
+  ui.tempo.value = String(sig.tempo);
+  ui.tempoOut.textContent = String(sig.tempo);
+  ui.instrument.value = sig.instrument;
+  ui.beat.value = sig.beat;
+}
+
+/** Which of the five signature settings the user has changed. */
+function overrides(): Set<SignatureSetting> {
+  const sig = state.signature;
+  const changed = new Set<SignatureSetting>();
+  if (!sig) return changed;
+  if (state.settings.key !== sig.key) changed.add('key');
+  if (state.settings.scale !== sig.scale) changed.add('scale');
+  if (state.tempo !== sig.tempo) changed.add('tempo');
+  if (state.instrument !== sig.instrument) changed.add('instrument');
+  if (state.beat !== sig.beat) changed.add('beat');
+  return changed;
+}
+
+const possessive = (name: string) => (name.endsWith('s') ? `${name}’` : `${name}’s`);
+const scaleShort = (id: ScaleId) => SCALES[id].name.replace(/\s*\(.*\)$/, '');
+const instrumentName = (id: InstrumentId) => INSTRUMENTS.find((i) => i.id === id)?.name ?? id;
+const beatName = (id: BeatId) => BEATS.find((b) => b.id === id)?.name ?? id;
+
+function renderSignature() {
+  const changed = overrides();
+  const mixed = changed.size > 0;
+  const name = state.soundName || 'This sequence';
+  ui.sigCard.classList.toggle('mixed', mixed);
+  ui.sigTitle.textContent = mixed ? `🎛 Your mix, based on ${name}` : `🧬 ${possessive(name)} sound`;
+  ui.sigSub.textContent = mixed
+    ? `You’ve changed ${changed.size} of the 5 settings the DNA chose.`
+    : state.signature?.dnaOnly
+      ? 'Chosen by the DNA itself (no protein found, so from the bases alone). Same sequence, same sound.'
+      : 'Chosen by the DNA itself. Same sequence, same sound.';
+  ui.sigReset.hidden = !mixed;
+  ui.sigReset.textContent = `↺ Back to ${possessive(name)} sound`;
+
+  const s = state.settings;
+  const keyChanged = changed.has('key') || changed.has('scale');
+  const chips: [string, boolean][] = [
+    [`${KEY_NAMES[s.key]} ${s.faithful ? '· all 12 notes' : scaleShort(s.scale)}`, keyChanged],
+    [`${state.tempo} BPM`, changed.has('tempo')],
+    [instrumentName(state.instrument), changed.has('instrument')],
+    [state.beat === 'off' ? 'No drums' : beatName(state.beat), changed.has('beat')],
+  ];
+  ui.sigChips.replaceChildren(
+    ...chips.map(([text, isChanged]) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      li.classList.toggle('changed', isChanged);
+      if (isChanged) li.title = 'Changed by you';
+      return li;
+    }),
+  );
+  for (const field of ui.soundCustom.querySelectorAll<HTMLElement>('[data-sig]'))
+    field.classList.toggle('changed', changed.has(field.dataset.sig as SignatureSetting));
+}
+
+/** The gene's own choice for a setting, as display text. */
+function signatureValue(sig: SoundSignature, setting: SignatureSetting): string {
+  switch (setting) {
+    case 'key':
+      return KEY_NAMES[sig.key];
+    case 'scale':
+      return scaleShort(sig.scale);
+    case 'tempo':
+      return `${sig.tempo} BPM`;
+    case 'instrument':
+      return instrumentName(sig.instrument);
+    case 'beat':
+      return beatName(sig.beat);
+  }
+}
+
+function renderWhy() {
+  const sig = state.signature;
+  if (!sig) return;
+  const changed = overrides();
+  const order: SignatureSetting[] = ['scale', 'key', 'tempo', 'instrument', 'beat'];
+  const items = order
+    .map((setting) => {
+      const r = sig.reasons.find((x) => x.setting === setting)!;
+      const mine = changed.has(setting) ? ' <span class="why-mine">you changed this</span>' : '';
+      return `<li><b>${SETTING_LABELS[setting]}: ${signatureValue(sig, setting)}</b>${mine}<br>${r.measure}, ${r.comparison} → ${r.effect}.</li>`;
+    })
+    .join('');
+  const note = sig.dnaOnly
+    ? '<p class="why-note">This sequence doesn’t code for a protein of 30 or more amino acids, so tempo, drums and instrument come from the DNA bases alone.</p>'
+    : '';
+  ui.bioWhy.innerHTML = `<h3>Why it sounds like this</h3><ul>${items}</ul>${note}<p class="why-note">Similar sequences get similar sounds: each choice comes from a measurable property, compared with typical human genes.</p>`;
 }
 
 // ---------- Mapping ----------
@@ -313,6 +443,8 @@ function syncControls() {
   const seq = state.sequence;
   const seconds = (result.totalBeats * 60) / state.tempo;
   ui.seqMeta.textContent = `${state.name} · ${seq.length.toLocaleString()} bases · ${formatTime(seconds)} at ${state.tempo} BPM`;
+  renderSignature();
+  if (state.showBiology) renderWhy();
 
   if (state.showBiology) {
     const atg = resolveReadingStart(seq, 'auto');
@@ -477,7 +609,7 @@ ui.fastaFile.addEventListener('change', () => {
 });
 ui.record.addEventListener('change', () => {
   const r = state.records[Number(ui.record.value)];
-  if (r) loadRecord(r, r.description ? `${r.id} ${r.description}` : r.id);
+  if (r) loadRecord(r, r.description ? `${r.id} ${r.description}` : r.id, r.id);
 });
 
 ui.frame.addEventListener('change', () => {
@@ -506,6 +638,17 @@ ui.tempo.addEventListener('input', () => {
 ui.instrument.addEventListener('change', () => {
   state.instrument = ui.instrument.value as InstrumentId;
   engine.setInstrument(state.instrument);
+  syncControls();
+});
+ui.sigCustom.addEventListener('click', () => {
+  const open = ui.soundCustom.hidden;
+  ui.soundCustom.hidden = !open;
+  ui.sigCustom.setAttribute('aria-expanded', String(open));
+  ui.sigCustom.textContent = open ? '🎛 Hide the controls' : '🎛 Make it your own';
+});
+ui.sigReset.addEventListener('click', () => {
+  applySignature();
+  remap(true);
 });
 ui.beat.addEventListener('change', () => {
   state.beat = ui.beat.value as BeatId;

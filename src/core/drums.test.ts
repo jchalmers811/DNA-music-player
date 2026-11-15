@@ -49,19 +49,33 @@ describe('drums', () => {
     expect(gaps).toContain(+(1 / 6).toFixed(3)); // triplet roll
   });
 
-  it('trap slices: some bars get fast bursts that sweep in tone', () => {
-    const hits = drumHits('trapSlices', [], 64, '', 0);
-    const sliced = hits.filter((h) => h.voice === 'hat' && h.tone !== undefined);
-    expect(sliced.length).toBeGreaterThan(20);
-    const gaps = sliced.slice(1).map((h, i) => +(h.time - sliced[i].time).toFixed(4));
-    expect(Math.min(...gaps.filter((g) => g > 0))).toBeLessThanOrEqual(0.0625);
-    expect(new Set(sliced.map((h) => Math.round(h.tone! * 10))).size).toBeGreaterThan(4);
-    // Occasional, not constant: some bars have no slice.
-    const slicedBars = new Set(sliced.map((h) => Math.floor(h.time / 4)));
-    expect(slicedBars.size).toBeGreaterThan(3);
-    expect(slicedBars.size).toBeLessThan(14);
-    // Deterministic.
-    expect(drumHits('trapSlices', [], 64, '', 0)).toEqual(hits);
+  it('boom bap: snare on 2 and 4, with swung sixteenths', () => {
+    const hits = drumHits('boomBap', [], 8, '');
+    const snares = hits.filter((h) => h.voice === 'snare' && h.velocity >= 0.9).map((h) => h.time);
+    expect(snares).toEqual([1, 3, 5, 7]);
+    const hats = hits.filter((h) => h.voice === 'hat').map((h) => +(h.time % 0.5).toFixed(3));
+    expect(hats).toContain(0.31); // the "e"/"a" sixteenths land late (0.25 + 0.06)
+    expect(hats).not.toContain(0.25);
+  });
+
+  it('dembow: kick on every beat, snare in the 3-3-2 pattern', () => {
+    const hits = drumHits('dembow', [], 4, '');
+    expect(hits.filter((h) => h.voice === 'kick').map((h) => h.time)).toEqual([0, 1, 2, 3]);
+    expect(hits.filter((h) => h.voice === 'snare').map((h) => h.time)).toEqual([0.75, 1.5, 2.75, 3.5]);
+  });
+
+  it('drum and bass: a two-step that repeats every two beats', () => {
+    const hits = drumHits('dnb', [], 4, '');
+    expect(hits.filter((h) => h.voice === 'kick').map((h) => h.time)).toEqual([0, 1.25, 2, 3.25]);
+    expect(hits.filter((h) => h.voice === 'snare' && h.velocity >= 0.9).map((h) => h.time)).toEqual([0.5, 1.5, 2.5, 3.5]);
+  });
+
+  it('tom groove: toms tuned to the key, varying across a two-bar phrase', () => {
+    const hits = drumHits('tomGroove', [], 8, '', 2); // key of D
+    const toms = hits.filter((h) => h.voice === 'tom');
+    expect(new Set(toms.map((h) => h.midi))).toEqual(new Set([45, 48, 52, 57])); // D-based toms
+    const bar = (b: number) => toms.filter((h) => Math.floor(h.time / 4) === b).map((h) => `${h.time % 4}:${h.midi}`);
+    expect(bar(0)).not.toEqual(bar(1));
   });
 
   describe('fills', () => {

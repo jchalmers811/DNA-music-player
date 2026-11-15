@@ -100,7 +100,6 @@ const ui = {
   vDrumLevel: $('v-drum-level'),
   vMapping: $('v-mapping'),
   vFrame: $('v-frame'),
-  vView: $('v-view'),
   bioWhy: $('bio-why'),
   dropOverlay: $('drop-overlay'),
   viewSwitch: $('view-switch'),
@@ -171,9 +170,7 @@ function setView(next: ViewId) {
   geneScene.setVisible(next === 'protein');
   towerScene.setVisible(next === 'tower');
   for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button')) {
-    btn.setAttribute('aria-checked', String(btn.dataset.view === next));
-    if (btn.dataset.view === next) ui.vView.textContent = btn.textContent;
-  }
+    btn.setAttribute('aria-checked', String(btn.dataset.view === next));  }
   ui.caveat.textContent = CAVEATS[next];
   ui.legend.hidden = next === 'helix';
   ui.helix.classList.toggle('view-protein', next !== 'helix');

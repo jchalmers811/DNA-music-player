@@ -81,3 +81,79 @@ export function radialTexture(stops: [number, string][], rings: number[] = [], r
   }
   return new THREE.CanvasTexture(c);
 }
+
+const FLANK_BASES = 'ACGT';
+/** Muted greys for DNA outside the gene: still a ladder, but clearly not part of what's playing. */
+const FLANK_RUNG_COLORS: Record<string, number> = { A: 0x5d6678, C: 0x4f5869, G: 0x687183, T: 0x565f70 };
+export const FLANK_BACKBONE = [0x6f7889, 0x5a6273] as const;
+
+/**
+ * DNA doesn't end where a gene ends: the chromosome carries on either side.
+ * Outside the sequence the scenes draw grey stand-in bases, fixed per position
+ * so they slide along like the real ones instead of flickering.
+ */
+export function dnaBaseAt(seq: string, i: number): { base: string; flank: boolean } {
+  if (i >= 0 && i < seq.length) return { base: seq[i], flank: false };
+  return { base: FLANK_BASES[Math.imul(i, 0x9e3779b1) >>> 30], flank: true };
+}
+
+/** Rung colour for one base of a strand: its usual colour inside the gene, grey outside. */
+export function rungColor(base: string, flank: boolean, colors: Record<string, number>): number {
+  return flank ? (FLANK_RUNG_COLORS[base] ?? FLANK_RUNG_COLORS.A) : (colors[base] ?? colors.N);
+}
+
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 4;
+
+/**
+ * Zoom with the scroll wheel, a trackpad pinch or a two-finger pinch on a phone;
+ * double-click (or double-tap) to go back to the default framing.
+ * Uses the camera's zoom (a lens zoom), so each view's own fitting and
+ * framing stay untouched and zoom 1 is exactly the default view.
+ * onPinchStart lets a view drop any one-finger drag, so it doesn't jump.
+ */
+export function addZoomControls(
+  canvas: HTMLCanvasElement,
+  camera: THREE.PerspectiveCamera,
+  onPinchStart?: () => void,
+): void {
+  const apply = (zoom: number) => {
+    camera.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+    camera.updateProjectionMatrix();
+  };
+  canvas.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1); // lines/pages → pixels
+      apply(camera.zoom * Math.exp(-px * 0.0015));
+    },
+    { passive: false },
+  );
+  canvas.addEventListener('dblclick', () => apply(1));
+
+  // Two-finger pinch. One finger still scrolls the page or turns the view as before.
+  const spread = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  let pinch: { from: number; zoom: number } | null = null;
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 2) return;
+    pinch = { from: Math.max(1, spread(e.touches)), zoom: camera.zoom };
+    onPinchStart?.();
+  });
+  canvas.addEventListener(
+    'touchmove',
+    (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault(); // stop the browser zooming the whole page
+      apply(pinch.zoom * (spread(e.touches) / pinch.from));
+    },
+    { passive: false },
+  );
+  const end = (e: TouchEvent) => {
+    if (e.touches.length < 2) pinch = null;
+  };
+  canvas.addEventListener('touchend', end);
+  canvas.addEventListener('touchcancel', end);
+  // iOS Safari: stop its own page pinch-zoom starting over the picture.
+  canvas.addEventListener('gesturestart', (e) => e.preventDefault());
+}

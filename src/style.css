@@ -788,8 +788,6 @@ button.set-row .set-value::after {
   color: var(--text-dim);
 }
 .set-reset { align-self: flex-start; }
-.settings-page .view-switch { grid-template-columns: 1fr; max-width: none; }
-.settings-page .view-switch button { padding: 12px; font-size: 14px; }
 body.settings-open { overflow: hidden; }
 
 @media (max-width: 860px) {

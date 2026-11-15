@@ -2,7 +2,17 @@ import * as THREE from 'three';
 import { complement } from '../core/genetics';
 import { BASE_COLORS, type HelixHighlight } from './helix';
 import { ProteinChain, type SceneProtein } from './proteinChain';
-import { hideInstances, makeInstanced, markDirty, setCylinder, smoothstep } from './sceneUtils';
+import {
+  addZoomControls,
+  dnaBaseAt,
+  FLANK_BACKBONE,
+  hideInstances,
+  makeInstanced,
+  markDirty,
+  rungColor,
+  setCylinder,
+  smoothstep,
+} from './sceneUtils';
 
 export { PROPERTY_COLORS, type SceneProtein } from './proteinChain';
 
@@ -161,6 +171,7 @@ export class GeneScene {
     const end = () => (this.dragging = null);
     this.canvas.addEventListener('pointerup', end);
     this.canvas.addEventListener('pointercancel', end);
+    addZoomControls(this.canvas, this.camera, () => (this.dragging = null));
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -186,7 +197,8 @@ export class GeneScene {
 
   render(pos: number, hl: HelixHighlight | null, timeSec: number): void {
     const ribPos = pos;
-    const polyPos = Math.min(this.seq.length, ribPos + this.ribDist / STEP);
+    // Not clamped: past the end of the gene the polymerase keeps moving along the grey flanking DNA.
+    const polyPos = ribPos + this.ribDist / STEP;
     this.renderDna(polyPos);
     this.renderMrna(ribPos, polyPos, hl);
     // How far translation has got, in residues (fractional).
@@ -201,11 +213,6 @@ export class GeneScene {
     const start = Math.floor(polyPos) - DNA_WINDOW / 2;
     for (let k = 0; k < DNA_WINDOW; k++) {
       const i = start + k;
-      if (i < 0 || i >= this.seq.length) {
-        hideInstances(this.dnaSpheres, 2 * k, 2 * k + 1);
-        hideInstances(this.dnaRungs, 2 * k, 2 * k + 1);
-        continue;
-      }
       const x = POL_X + (i - polyPos) * STEP;
       // Fade at the window ends and before the edge of the layout, so DNA never runs under the overlays.
       const fade = smoothstep(0, 12, Math.min(k, DNA_WINDOW - 1 - k)) * smoothstep(BOUNDS.maxX + 0.3, BOUNDS.maxX - 1.8, x);
@@ -215,12 +222,13 @@ export class GeneScene {
       // Strand 0 = coding strand (top when open); strand 1 = template strand (bottom), read by the polymerase.
       this.a.set(x, DNA_Y + r * Math.cos(theta), r * Math.sin(theta));
       this.b.set(x, DNA_Y - r * Math.cos(theta), -r * Math.sin(theta));
-      const base = this.seq[i];
+      const { base, flank } = dnaBaseAt(this.seq, i);
       for (let s = 0; s < 2; s++) {
         const pt = s === 0 ? this.a : this.b;
         this.m.compose(pt, this.q.identity(), this.scale.setScalar(0.085 * fade));
         this.dnaSpheres.setMatrixAt(2 * k + s, this.m);
-        this.dnaSpheres.setColorAt(2 * k + s, this.col.setHex(s === 0 ? 0xa5b4cf : 0x7f8db0));
+        const backbone = flank ? FLANK_BACKBONE[s] : s === 0 ? 0xa5b4cf : 0x7f8db0;
+        this.dnaSpheres.setColorAt(2 * k + s, this.col.setHex(backbone));
       }
       // Half-rungs reach toward each other; they shrink apart as the strands separate.
       const reach = Math.min(r, 0.2);
@@ -229,8 +237,8 @@ export class GeneScene {
       setCylinder(this.dnaRungs, 2 * k, this.a, this.center, 0.045 * fade);
       this.center.copy(this.b).addScaledVector(this.v, -reach);
       setCylinder(this.dnaRungs, 2 * k + 1, this.b, this.center, 0.045 * fade);
-      this.dnaRungs.setColorAt(2 * k, this.col.setHex(BASE_COLORS[base] ?? BASE_COLORS.N));
-      this.dnaRungs.setColorAt(2 * k + 1, this.col.setHex(BASE_COLORS[complement(base)] ?? BASE_COLORS.N));
+      this.dnaRungs.setColorAt(2 * k, this.col.setHex(rungColor(base, flank, BASE_COLORS)));
+      this.dnaRungs.setColorAt(2 * k + 1, this.col.setHex(rungColor(complement(base), flank, BASE_COLORS)));
     }
   }
 
@@ -259,7 +267,7 @@ export class GeneScene {
       this.mrnaBeads.setColorAt(k, this.col);
 
       const nextDist = dist - STEP; // base j+1 is one step back along the path
-      if (j + 1 < polyPos && nextDist >= 0) {
+      if (j + 1 < polyPos && j + 1 < this.seq.length && nextDist >= 0) {
         this.mrnaPath.getPointAt(nextDist / total, this.b);
         setCylinder(this.mrnaLinks, k, this.a, this.b, 0.025 * fade);
         this.mrnaLinks.setColorAt(k, this.col.setHex(0x9aa7bd));

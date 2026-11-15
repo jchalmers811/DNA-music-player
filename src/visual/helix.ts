@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { complement } from '../core/genetics';
+import { addZoomControls } from './sceneUtils';
 
 /** Idealised B-DNA geometry, in nanometres (1 scene unit = 1 nm). */
 const TWIST = (2 * Math.PI) / 10.5; // ~34.3° per base pair
@@ -71,6 +72,7 @@ export class HelixView {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, windowSize < 150 ? 1.5 : 2));
     this.renderer.setClearColor(0x000000, 0);
     container.prepend(this.renderer.domElement);
+    addZoomControls(this.renderer.domElement, this.camera);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
     const key = new THREE.DirectionalLight(0xffffff, 2.4);

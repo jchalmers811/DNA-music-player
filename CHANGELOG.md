@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0: Easier views, DNA that keeps flowing, and zoom
+
+- The view picker (Gene → protein, 3D scene, Double helix) is back in the sidebar as its own card, instead of being tucked away in More settings.
+- The DNA no longer runs out before the music ends. A gene is part of a longer chromosome, so the gene → protein and 3D scene views now show the DNA on either side of the gene in grey, flowing through the RNA polymerase for the whole song. The mRNA ends at the gene's last base and slides on into the ribosome while the last notes play.
+- Zoom in and out of any view with the scroll wheel, a trackpad pinch or a two-finger pinch on a phone. Double-click or double-tap to go back to the default framing.
+
 ## 0.5.0: 3D scene and a simpler layout
 
 - New **3D scene** view: the gene-to-protein story as a tower. The DNA stands upright as a wiggly supercoil and feeds up through the RNA polymerase, the mRNA spirals down to an iridescent ribosome, and the protein grows upwards and folds, using the same fold estimate as the gene → protein view. A glowing floor, a dark ceiling and drifting building blocks complete it, and the camera slowly circles. Drag to look around.

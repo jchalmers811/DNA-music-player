@@ -86,6 +86,15 @@
             <p class="meta" id="seq-meta"></p>
           </section>
 
+          <section class="group">
+            <h2 id="view-title">View</h2>
+            <div class="segmented view-switch" id="view-switch" role="radiogroup" aria-labelledby="view-title">
+              <button type="button" role="radio" data-view="protein">Gene → protein</button>
+              <button type="button" role="radio" data-view="tower">3D scene</button>
+              <button type="button" role="radio" data-view="helix">Double helix</button>
+            </div>
+          </section>
+
           <section class="group sound-summary" id="sound-summary">
             <h2 id="sound-summary-title">This gene’s sound</h2>
             <p class="sound-summary-text" id="sound-summary-text"></p>
@@ -135,7 +144,6 @@
 
             <h3 class="set-group-title">Display</h3>
             <div class="set-group">
-              <button type="button" class="set-row" data-page="view"><span>View</span><span class="set-value" id="v-view"></span></button>
               <label class="set-row set-switch"><span>Show the biology <small>codons, amino acids, why it sounds this way</small></span><input type="checkbox" role="switch" id="show-bio" /></label>
             </div>
           </div>
@@ -178,13 +186,6 @@
                 <option value="2">Frame 3</option>
               </select>
             </label>
-          </div>
-          <div class="settings-page" data-page="view" data-title="View" hidden>
-            <div class="segmented view-switch" id="view-switch" role="radiogroup" aria-label="View">
-              <button type="button" role="radio" data-view="protein">Gene → protein</button>
-              <button type="button" role="radio" data-view="tower">3D scene</button>
-              <button type="button" role="radio" data-view="helix">Double helix</button>
-            </div>
           </div>
         </div>
       </section>

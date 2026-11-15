@@ -2,7 +2,20 @@ import * as THREE from 'three';
 import { complement } from '../core/genetics';
 import { BASE_COLORS, type HelixHighlight } from './helix';
 import { ProteinChain, type SceneProtein } from './proteinChain';
-import { hideInstances, makeInstanced, markDirty, radialTexture, setCylinder, setSphere, smoothstep, UP } from './sceneUtils';
+import {
+  addZoomControls,
+  dnaBaseAt,
+  FLANK_BACKBONE,
+  hideInstances,
+  makeInstanced,
+  markDirty,
+  radialTexture,
+  rungColor,
+  setCylinder,
+  setSphere,
+  smoothstep,
+  UP,
+} from './sceneUtils';
 import {
   BLOCK_EFFECTS,
   RIBOSOME_LOOKS,
@@ -260,6 +273,7 @@ export class TowerScene {
     const end = () => (this.dragging = null);
     this.canvas.addEventListener('pointerup', end);
     this.canvas.addEventListener('pointercancel', end);
+    addZoomControls(this.canvas, this.camera, () => (this.dragging = null));
 
     this.setOptions(opts.options ?? {});
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -342,7 +356,8 @@ export class TowerScene {
     this.lastTime = timeSec;
     const pulse = hl?.pulse ?? 0;
     const ribPos = pos;
-    const polyPos = Math.min(this.seq.length, ribPos + this.ribDist / STEP);
+    // Not clamped: past the end of the gene the polymerase keeps moving along the grey flanking DNA.
+    const polyPos = ribPos + this.ribDist / STEP;
     const spin = this.options.motion === 'spin' ? timeSec * SPIN_SPEED : 0;
 
     this.renderDna(polyPos, timeSec, spin);
@@ -379,11 +394,7 @@ export class TowerScene {
 
     for (let k = 0; k < n; k++) {
       const i = start + k;
-      if (i < 0 || i >= this.seq.length) {
-        hideInstances(this.dnaSpheres, 2 * k, 2 * k + 1);
-        hideInstances(this.dnaRungs, 2 * k, 2 * k + 1);
-        continue;
-      }
+      const { base, flank } = dnaBaseAt(this.seq, i);
       const s = (polyPos - i) * STEP;
       const c = this.centres[k];
       const nrm = this.normals[k];
@@ -401,19 +412,18 @@ export class TowerScene {
       }
       setSphere(this.dnaSpheres, 2 * k, this.a, 0.07 * fade);
       setSphere(this.dnaSpheres, 2 * k + 1, this.b, 0.07 * fade);
-      this.dnaSpheres.setColorAt(2 * k, this.col.setHex(0xa5b4cf).lerp(this.black, dark * 0.9));
-      this.dnaSpheres.setColorAt(2 * k + 1, this.col.setHex(0x7f8db0).lerp(this.black, dark * 0.9));
+      this.dnaSpheres.setColorAt(2 * k, this.col.setHex(flank ? FLANK_BACKBONE[0] : 0xa5b4cf).lerp(this.black, dark * 0.9));
+      this.dnaSpheres.setColorAt(2 * k + 1, this.col.setHex(flank ? FLANK_BACKBONE[1] : 0x7f8db0).lerp(this.black, dark * 0.9));
       // Half-rungs: each base reaches to the middle, coloured by its base; they part inside the polymerase.
       if (open > 0.3 || fade <= 0) {
         hideInstances(this.dnaRungs, 2 * k, 2 * k + 1);
         continue;
       }
-      const base = this.seq[i];
       this.mid.addVectors(this.a, this.b).multiplyScalar(0.5);
       setCylinder(this.dnaRungs, 2 * k, this.a, this.mid, 0.035 * fade);
       setCylinder(this.dnaRungs, 2 * k + 1, this.b, this.mid, 0.035 * fade);
-      this.dnaRungs.setColorAt(2 * k, this.col.setHex(BASE_COLORS[base] ?? BASE_COLORS.N).lerp(this.black, dark * 0.9));
-      this.dnaRungs.setColorAt(2 * k + 1, this.col.setHex(BASE_COLORS[complement(base)] ?? BASE_COLORS.N).lerp(this.black, dark * 0.9));
+      this.dnaRungs.setColorAt(2 * k, this.col.setHex(rungColor(base, flank, BASE_COLORS)).lerp(this.black, dark * 0.9));
+      this.dnaRungs.setColorAt(2 * k + 1, this.col.setHex(rungColor(complement(base), flank, BASE_COLORS)).lerp(this.black, dark * 0.9));
     }
   }
 
@@ -438,7 +448,7 @@ export class TowerScene {
       if (active) this.col.lerp(this.white, 0.2 + 0.5 * hl!.pulse);
       this.mrnaBeads.setColorAt(k, this.col);
       const nextDist = dist - STEP;
-      if (j + 1 < polyPos && nextDist >= 0) {
+      if (j + 1 < polyPos && j + 1 < this.seq.length && nextDist >= 0) {
         this.mrnaPath.getPointAt(nextDist / this.mrnaLength, this.b);
         setCylinder(this.mrnaLinks, k, this.a, this.b, 0.02 * fade);
         this.mrnaLinks.setColorAt(k, this.col.setHex(0x9aa7bd));

@@ -25,7 +25,8 @@ import { GeneScene, PROPERTY_COLORS } from './visual/geneScene';
 import { HelixView, type HelixHighlight } from './visual/helix';
 
 type ViewId = 'helix' | 'protein';
-const VIEW_KEY = 'dna-music-player:view';
+// v2: earlier versions saved the view on every load, not just when chosen.
+const VIEW_KEY = 'dna-music-player:view-choice';
 const CAVEATS: Record<ViewId, string> = {
   helix: 'Idealised B-DNA diagram, not a measured structure',
   protein: 'Simplified view. The protein shape is a rough estimate, not a prediction. Drag to turn it once the protein is complete.',
@@ -124,21 +125,27 @@ const strip = new SequenceStrip($('strip'));
 $('version').textContent = `v${version}`;
 
 // ---------- Views ----------
+/** Gene → protein is the default; the helix is used only if the viewer chose it. */
 function readStoredView(): ViewId {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'protein' ? 'protein' : 'helix';
+    return localStorage.getItem(VIEW_KEY) === 'helix' ? 'helix' : 'protein';
   } catch {
-    return 'helix';
+    return 'protein';
   }
 }
 
-function setView(next: ViewId) {
-  view = next;
+/** Remember a view only when the viewer picks it, so the default can change later. */
+function chooseView(next: ViewId) {
   try {
     localStorage.setItem(VIEW_KEY, next);
   } catch {
     /* storage unavailable: the choice just isn't remembered */
   }
+  setView(next);
+}
+
+function setView(next: ViewId) {
+  view = next;
   helix.setVisible(next === 'helix');
   geneScene.setVisible(next === 'protein');
   for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button'))
@@ -686,7 +693,7 @@ window.addEventListener('drop', (e) => {
 });
 
 for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button'))
-  btn.addEventListener('click', () => setView(btn.dataset.view as ViewId));
+  btn.addEventListener('click', () => chooseView(btn.dataset.view as ViewId));
 
 // ---------- Start ----------
 loadSample(SAMPLES[0].id);

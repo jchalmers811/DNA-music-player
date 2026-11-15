@@ -127,4 +127,12 @@ ${wrap(LYZ)}`,
     fasta: `>S SARS-CoV-2 surface glycoprotein, coding sequence (NC_045512.2)
 ${wrap(SPIKE)}`,
   },
+  {
+    id: 'telomere',
+    name: 'Telomere repeats (human, no ATG)',
+    soundName: 'Telomere',
+    about:
+      'The protective caps on the ends of every chromosome: TTAGGG repeated thousands of times (here, 100 repeats). It codes for no protein and never contains ATG, the start codon, so its sound comes from the DNA bases alone.',
+    fasta: `>Telomere Homo sapiens telomeric repeat (TTAGGG)x100\n${wrap('TTAGGG'.repeat(100))}`,
+  },
 ];

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-brand="dna">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -26,9 +26,7 @@
         <section class="stage" aria-label="Player">
           <div class="helix" id="helix">
             <div class="scene-labels" id="scene-labels" aria-hidden="true"></div>
-            <p class="caveat" id="caveat">Idealised B-DNA diagram, not a measured structure</p>
             <div class="now-playing" id="now-playing" aria-live="off"></div>
-            <div class="legend" id="legend" hidden></div>
             <p class="scene-note" id="scene-note" hidden></p>
           </div>
 
@@ -58,19 +56,16 @@
 
         <aside class="controls" aria-label="Choose DNA">
           <section class="group">
-            <label class="field">
-              <span>Gene</span>
-              <select id="sample"></select>
-            </label>
+            <ts-select id="sample" label="Gene"></ts-select>
             <p class="hint" id="sample-about"></p>
-            <button type="button" class="btn btn-dashed" id="import-toggle" aria-expanded="false" aria-controls="import">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            <ts-button variant="secondary" full-width id="import-toggle" aria-expanded="false" aria-controls="import">
+              <svg slot="start" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
               Use your own DNA (FASTA)
-            </button>
+            </ts-button>
             <div class="import" id="import" hidden>
-              <textarea id="fasta-input" rows="5" spellcheck="false" aria-label="FASTA sequence" placeholder=">my_gene&#10;ATGGCCCTGTGGATGCGC…"></textarea>
+              <ts-text-area id="fasta-input" label="FASTA sequence" rows="5" spellcheck="false" placeholder=">my_gene&#10;ATGGCCCTGTGGATGCGC…"></ts-text-area>
               <div class="import-actions">
-                <button id="fasta-load" class="btn">Load sequence</button>
+                <ts-button id="fasta-load">Load sequence</ts-button>
                 <label class="btn btn-ghost file-btn">
                   Open file…
                   <input id="fasta-file" type="file" accept=".fa,.fasta,.fna,.ffn,.fas,.seq,.txt,text/plain" />
@@ -78,21 +73,17 @@
               </div>
               <p class="hint">You can also drop a file anywhere on the page. Files are read locally and never uploaded.</p>
             </div>
-            <label class="field" id="record-field" hidden>
-              <span>Record</span>
-              <select id="record"></select>
-            </label>
+            <ts-select id="record" label="Record" hidden></ts-select>
             <p class="message" id="seq-message" role="status"></p>
             <p class="meta" id="seq-meta"></p>
           </section>
 
           <section class="group">
-            <h2 id="view-title">View</h2>
-            <div class="segmented view-switch" id="view-switch" role="radiogroup" aria-labelledby="view-title">
-              <button type="button" role="radio" data-view="protein">Gene → protein</button>
-              <button type="button" role="radio" data-view="tower">3D scene</button>
-              <button type="button" role="radio" data-view="helix">Double helix</button>
-            </div>
+            <ts-segmented-control id="view-switch" label="View" full-width>
+              <option value="protein">Gene → protein</option>
+              <option value="tower">3D scene</option>
+              <option value="helix">Double helix</option>
+            </ts-segmented-control>
           </section>
 
           <section class="group sound-summary" id="sound-summary">
@@ -131,10 +122,10 @@
               <button type="button" class="set-row" data-page="instrument" data-sig="instrument"><span>Instrument</span><span class="set-value" id="v-instrument"></span></button>
               <button type="button" class="set-row" data-page="drums" data-sig="beat"><span>Drums</span><span class="set-value" id="v-beat"></span></button>
               <button type="button" class="set-row" data-page="drum-level" id="drum-level-field"><span>Drum volume</span><span class="set-value" id="v-drum-level"></span></button>
-              <label class="set-row set-switch"><span>Faithful mode <small>all 12 notes, no scale</small></span><input type="checkbox" role="switch" id="faithful" /></label>
+              <div class="set-row set-switch"><ts-switch id="faithful" label="Faithful mode" hint="All 12 notes, no scale"></ts-switch></div>
             </div>
             <p class="set-note" id="sound-note"></p>
-            <button type="button" class="btn btn-ghost set-reset" id="sig-reset" hidden></button>
+            <ts-button variant="secondary" size="sm" class="set-reset" id="sig-reset" hidden></ts-button>
 
             <h3 class="set-group-title">Reading the DNA</h3>
             <div class="set-group">
@@ -144,48 +135,38 @@
 
             <h3 class="set-group-title">Display</h3>
             <div class="set-group">
-              <label class="set-row set-switch"><span>Show the biology <small>codons, amino acids, why it sounds this way</small></span><input type="checkbox" role="switch" id="show-bio" /></label>
+              <div class="set-row set-switch"><ts-switch id="show-bio" label="Show the biology" hint="Codons, amino acids, why it sounds this way"></ts-switch></div>
             </div>
           </div>
 
           <div class="settings-page" data-page="keyscale" data-title="Key and scale" hidden>
-            <label class="field"><span>Key</span><select id="key"></select></label>
-            <label class="field"><span>Scale</span><select id="scale"></select></label>
-            <p class="hint">Faithful mode ignores the scale and uses all 12 notes.</p>
+            <ts-select id="key" label="Key"></ts-select>
+            <ts-select id="scale" label="Scale" hint="Faithful mode ignores the scale and uses all 12 notes."></ts-select>
           </div>
           <div class="settings-page" data-page="tempo" data-title="Tempo" hidden>
-            <label class="field">
-              <span>Tempo <output id="tempo-out">110</output> BPM</span>
-              <input type="range" id="tempo" min="50" max="220" step="1" value="110" />
-            </label>
+            <ts-slider id="tempo" label="Tempo" min="50" max="220" step="1" value="110"></ts-slider>
           </div>
           <div class="settings-page" data-page="instrument" data-title="Instrument" hidden>
-            <label class="field"><span>Instrument</span><select id="instrument"></select></label>
+            <ts-select id="instrument" label="Instrument"></ts-select>
           </div>
           <div class="settings-page" data-page="drums" data-title="Drums" hidden>
-            <label class="field"><span>Percussion</span><select id="beat"></select></label>
+            <ts-select id="beat" label="Percussion"></ts-select>
             <p class="hint" id="beat-about"></p>
           </div>
           <div class="settings-page" data-page="drum-level" data-title="Drum volume" hidden>
-            <label class="field">
-              <span>Drum volume <output id="drum-level-out">70</output>%</span>
-              <input type="range" id="drum-level" min="0" max="100" step="1" value="70" />
-            </label>
+            <ts-slider id="drum-level" label="Drum volume" min="0" max="100" step="1" value="70"></ts-slider>
           </div>
           <div class="settings-page" data-page="mapping" data-title="Mapping" hidden>
-            <div class="segmented" id="mapping" role="radiogroup" aria-label="Mapping"></div>
+            <ts-segmented-control id="mapping" label="Mapping" hide-label full-width></ts-segmented-control>
             <p class="hint" id="mapping-summary"></p>
           </div>
           <div class="settings-page" data-page="frame" data-title="Reading frame" hidden>
-            <label class="field">
-              <span>Reading frame</span>
-              <select id="frame">
-                <option value="auto">Auto (from first ATG)</option>
-                <option value="0">Frame 1</option>
-                <option value="1">Frame 2</option>
-                <option value="2">Frame 3</option>
-              </select>
-            </label>
+            <ts-select id="frame" label="Reading frame" value="auto">
+              <option value="auto">Auto (from first ATG)</option>
+              <option value="0">Frame 1</option>
+              <option value="1">Frame 2</option>
+              <option value="2">Frame 3</option>
+            </ts-select>
           </div>
         </div>
       </section>

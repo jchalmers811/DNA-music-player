@@ -1,15 +1,14 @@
 import * as THREE from 'three';
 import { complement } from '../core/genetics';
-import { BASE_COLORS, type HelixHighlight } from './helix';
+import { type HelixHighlight } from './helix';
+import { backboneColor, baseColor, dnaScale, mrnaLinkColor, rungColor } from './look';
 import { ProteinChain, type SceneProtein } from './proteinChain';
 import {
   addZoomControls,
   dnaBaseAt,
-  FLANK_BACKBONE,
   hideInstances,
   makeInstanced,
   markDirty,
-  rungColor,
   setCylinder,
   smoothstep,
 } from './sceneUtils';
@@ -93,8 +92,8 @@ export class GeneScene {
 
     const sphere = new THREE.SphereGeometry(1, 14, 10);
     const cyl = new THREE.CylinderGeometry(1, 1, 1, 8, 1);
-    this.dnaSpheres = makeInstanced(sphere, DNA_WINDOW * 2, this.orient);
-    this.dnaRungs = makeInstanced(cyl, DNA_WINDOW * 2, this.orient);
+    this.dnaSpheres = makeInstanced(sphere, DNA_WINDOW * 2, this.orient, { dna: true });
+    this.dnaRungs = makeInstanced(cyl, DNA_WINDOW * 2, this.orient, { dna: true });
 
     // mRNA path: down out of the polymerase, round a corner, left through the ribosome and beyond.
     const p = (x: number, y: number) => new THREE.Vector3(x, y, 0);
@@ -105,8 +104,8 @@ export class GeneScene {
     this.mrnaPath.add(new THREE.LineCurve3(p(RIB_X, MRNA_Y), p(RIB_X - MRNA_TAIL * STEP - 2, MRNA_Y)));
     this.ribDist = this.mrnaPath.getCurveLengths()[2];
     const mrnaCount = Math.ceil(this.ribDist / STEP) + MRNA_TAIL + 4;
-    this.mrnaBeads = makeInstanced(sphere, mrnaCount, this.orient);
-    this.mrnaLinks = makeInstanced(cyl, mrnaCount, this.orient);
+    this.mrnaBeads = makeInstanced(sphere, mrnaCount, this.orient, { dna: true });
+    this.mrnaLinks = makeInstanced(cyl, mrnaCount, this.orient, { dna: true });
 
     this.chain = new ProteinChain(this.orient, sphere, cyl, opts.small ? 800 : 1500, {
       exit: EXIT,
@@ -217,7 +216,8 @@ export class GeneScene {
       // Fade at the window ends and before the edge of the layout, so DNA never runs under the overlays.
       const fade = smoothstep(0, 12, Math.min(k, DNA_WINDOW - 1 - k)) * smoothstep(BOUNDS.maxX + 0.3, BOUNDS.maxX - 1.8, x);
       const open = Math.exp(-(((x - POL_X) / 0.75) ** 2)); // 1 inside the polymerase
-      const r = 0.2 + 0.42 * open;
+      const sizes = dnaScale();
+      const r = 0.2 * sizes.radius + 0.42 * open;
       const theta = i * TWIST * (1 - open);
       // Strand 0 = coding strand (top when open); strand 1 = template strand (bottom), read by the polymerase.
       this.a.set(x, DNA_Y + r * Math.cos(theta), r * Math.sin(theta));
@@ -225,20 +225,19 @@ export class GeneScene {
       const { base, flank } = dnaBaseAt(this.seq, i);
       for (let s = 0; s < 2; s++) {
         const pt = s === 0 ? this.a : this.b;
-        this.m.compose(pt, this.q.identity(), this.scale.setScalar(0.085 * fade));
+        this.m.compose(pt, this.q.identity(), this.scale.setScalar(0.085 * sizes.bead * fade));
         this.dnaSpheres.setMatrixAt(2 * k + s, this.m);
-        const backbone = flank ? FLANK_BACKBONE[s] : s === 0 ? 0xa5b4cf : 0x7f8db0;
-        this.dnaSpheres.setColorAt(2 * k + s, this.col.setHex(backbone));
+        this.dnaSpheres.setColorAt(2 * k + s, backboneColor(i, s, flank, this.col));
       }
       // Half-rungs reach toward each other; they shrink apart as the strands separate.
       const reach = Math.min(r, 0.2);
       this.v.subVectors(this.b, this.a).normalize();
       this.center.copy(this.a).addScaledVector(this.v, reach);
-      setCylinder(this.dnaRungs, 2 * k, this.a, this.center, 0.045 * fade);
+      setCylinder(this.dnaRungs, 2 * k, this.a, this.center, 0.045 * sizes.rung * fade);
       this.center.copy(this.b).addScaledVector(this.v, -reach);
-      setCylinder(this.dnaRungs, 2 * k + 1, this.b, this.center, 0.045 * fade);
-      this.dnaRungs.setColorAt(2 * k, this.col.setHex(rungColor(base, flank, BASE_COLORS)));
-      this.dnaRungs.setColorAt(2 * k + 1, this.col.setHex(rungColor(complement(base), flank, BASE_COLORS)));
+      setCylinder(this.dnaRungs, 2 * k + 1, this.b, this.center, 0.045 * sizes.rung * fade);
+      this.dnaRungs.setColorAt(2 * k, rungColor(base, flank, this.col));
+      this.dnaRungs.setColorAt(2 * k + 1, rungColor(complement(base), flank, this.col));
     }
   }
 
@@ -259,18 +258,18 @@ export class GeneScene {
       this.mrnaPath.getPointAt(dist / total, this.a);
       const fade = smoothstep(0, 10, k);
       const active = hl !== null && j >= hl.start && j < hl.start + hl.length;
-      const r = 0.07 * fade * (active ? 1.35 + 0.5 * hl!.pulse : 1);
+      const r = 0.07 * dnaScale().bead * fade * (active ? 1.35 + 0.5 * hl!.pulse : 1);
       this.m.compose(this.a, this.q.identity(), this.scale.setScalar(r));
       this.mrnaBeads.setMatrixAt(k, this.m);
-      this.col.setHex(BASE_COLORS[this.seq[j]] ?? BASE_COLORS.N); // U takes T's colour
+      this.col.setHex(baseColor(this.seq[j])); // U takes T's colour
       if (active) this.col.lerp(this.white, 0.2 + 0.5 * hl!.pulse);
       this.mrnaBeads.setColorAt(k, this.col);
 
       const nextDist = dist - STEP; // base j+1 is one step back along the path
       if (j + 1 < polyPos && j + 1 < this.seq.length && nextDist >= 0) {
         this.mrnaPath.getPointAt(nextDist / total, this.b);
-        setCylinder(this.mrnaLinks, k, this.a, this.b, 0.025 * fade);
-        this.mrnaLinks.setColorAt(k, this.col.setHex(0x9aa7bd));
+        setCylinder(this.mrnaLinks, k, this.a, this.b, 0.025 * dnaScale().thread * fade);
+        this.mrnaLinks.setColorAt(k, mrnaLinkColor(j, this.col));
       } else hideInstances(this.mrnaLinks, k);
     }
   }

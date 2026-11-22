@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import { complement } from '../core/genetics';
-import { BASE_COLORS, type HelixHighlight } from './helix';
+import { type HelixHighlight } from './helix';
+import { backboneColor, baseColor, dnaScale, floorLight, fogColor, mrnaLinkColor, rungColor } from './look';
 import { ProteinChain, type SceneProtein } from './proteinChain';
 import {
   addZoomControls,
   dnaBaseAt,
-  FLANK_BACKBONE,
   hideInstances,
   makeInstanced,
   markDirty,
   radialTexture,
-  rungColor,
   setCylinder,
   setSphere,
   smoothstep,
@@ -115,7 +114,7 @@ export class TowerScene {
   private readonly outward: THREE.Vector3; // horizontal, from the tower's axis to the ribosome
   private readonly floor: THREE.Mesh;
   private readonly ceiling: THREE.Mesh;
-  private readonly floorLight = new THREE.PointLight(0x7dd3fc, 0, 9);
+  private readonly floorLight = new THREE.PointLight(floorLight().light, 0, 9);
   private readonly ceilingLight = new THREE.PointLight(0xffffff, 0, 8); // negative: takes light away
   private readonly labels: { el: HTMLElement; at: () => THREE.Vector3 | null }[] = [];
   private readonly resizeObserver: ResizeObserver;
@@ -158,7 +157,7 @@ export class TowerScene {
     this.canvas.classList.add('gene-canvas');
     container.prepend(this.canvas);
 
-    this.scene.fog = new THREE.Fog(0x0b1220, 18, 40);
+    this.scene.fog = new THREE.Fog(fogColor(), 18, 40);
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
     const key = new THREE.DirectionalLight(0xffffff, 2.3);
     key.position.set(3, 6, 10);
@@ -170,8 +169,8 @@ export class TowerScene {
 
     const sphere = new THREE.SphereGeometry(1, 14, 10);
     const cyl = new THREE.CylinderGeometry(1, 1, 1, 8, 1);
-    this.dnaSpheres = makeInstanced(sphere, DNA_WINDOW * 2, this.root);
-    this.dnaRungs = makeInstanced(cyl, DNA_WINDOW * 2, this.root);
+    this.dnaSpheres = makeInstanced(sphere, DNA_WINDOW * 2, this.root, { dna: true });
+    this.dnaRungs = makeInstanced(cyl, DNA_WINDOW * 2, this.root, { dna: true });
 
     // RNA polymerase: a soft translucent body around the DNA.
     const polymerase = new THREE.Mesh(
@@ -203,8 +202,8 @@ export class TowerScene {
     }
     this.ribDist = ribDist;
     const mrnaCount = Math.ceil(this.ribDist / STEP) + MRNA_TAIL + 4;
-    this.mrnaBeads = makeInstanced(sphere, mrnaCount, this.root);
-    this.mrnaLinks = makeInstanced(cyl, mrnaCount, this.root);
+    this.mrnaBeads = makeInstanced(sphere, mrnaCount, this.root, { dna: true });
+    this.mrnaLinks = makeInstanced(cyl, mrnaCount, this.root, { dna: true });
 
     // The ribosome's own frame: x along the mRNA, y up, z across.
     this.ribX = this.mrnaPath.getTangentAt(this.ribDist / this.mrnaLength).normalize();
@@ -224,7 +223,7 @@ export class TowerScene {
     this.floor = new THREE.Mesh(
       new THREE.CircleGeometry(PLATE_R, 64),
       new THREE.MeshBasicMaterial({
-        map: radialTexture([[0, 'rgba(125, 211, 252, 0.55)'], [0.35, 'rgba(56, 150, 220, 0.22)'], [1, 'rgba(10, 14, 22, 0)']], [34, 64, 94], 'rgba(165, 220, 252, 0.28)'),
+        map: radialTexture(floorLight().glow, [34, 64, 94], floorLight().ring),
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
       }),
     );
@@ -402,7 +401,8 @@ export class TowerScene {
       const fade = smoothstep(0, 1.0, Math.min(c.y - Y_BOTTOM, Y_TOP - c.y));
       const dark = this.darkAt(c.y);
       const open = 1 - smoothstep(0.35, 0.6, Math.abs(s)); // 1 inside the polymerase
-      const r = DNA_R * (1 + open * 0.9);
+      const sizes = dnaScale();
+      const r = DNA_R * sizes.radius * (1 + open * 0.9);
       const th = i * TWIST;
       this.a.copy(c).addScaledVector(nrm, Math.cos(th) * r).addScaledVector(this.bin, Math.sin(th) * r);
       this.b.copy(c).addScaledVector(nrm, Math.cos(th + 2.4) * r).addScaledVector(this.bin, Math.sin(th + 2.4) * r);
@@ -410,20 +410,20 @@ export class TowerScene {
         this.a.applyAxisAngle(UP, spin);
         this.b.applyAxisAngle(UP, spin);
       }
-      setSphere(this.dnaSpheres, 2 * k, this.a, 0.07 * fade);
-      setSphere(this.dnaSpheres, 2 * k + 1, this.b, 0.07 * fade);
-      this.dnaSpheres.setColorAt(2 * k, this.col.setHex(flank ? FLANK_BACKBONE[0] : 0xa5b4cf).lerp(this.black, dark * 0.9));
-      this.dnaSpheres.setColorAt(2 * k + 1, this.col.setHex(flank ? FLANK_BACKBONE[1] : 0x7f8db0).lerp(this.black, dark * 0.9));
+      setSphere(this.dnaSpheres, 2 * k, this.a, 0.07 * sizes.bead * fade);
+      setSphere(this.dnaSpheres, 2 * k + 1, this.b, 0.07 * sizes.bead * fade);
+      this.dnaSpheres.setColorAt(2 * k, backboneColor(i, 0, flank, this.col).lerp(this.black, dark * 0.9));
+      this.dnaSpheres.setColorAt(2 * k + 1, backboneColor(i, 1, flank, this.col).lerp(this.black, dark * 0.9));
       // Half-rungs: each base reaches to the middle, coloured by its base; they part inside the polymerase.
       if (open > 0.3 || fade <= 0) {
         hideInstances(this.dnaRungs, 2 * k, 2 * k + 1);
         continue;
       }
       this.mid.addVectors(this.a, this.b).multiplyScalar(0.5);
-      setCylinder(this.dnaRungs, 2 * k, this.a, this.mid, 0.035 * fade);
-      setCylinder(this.dnaRungs, 2 * k + 1, this.b, this.mid, 0.035 * fade);
-      this.dnaRungs.setColorAt(2 * k, this.col.setHex(rungColor(base, flank, BASE_COLORS)).lerp(this.black, dark * 0.9));
-      this.dnaRungs.setColorAt(2 * k + 1, this.col.setHex(rungColor(complement(base), flank, BASE_COLORS)).lerp(this.black, dark * 0.9));
+      setCylinder(this.dnaRungs, 2 * k, this.a, this.mid, 0.035 * sizes.rung * fade);
+      setCylinder(this.dnaRungs, 2 * k + 1, this.b, this.mid, 0.035 * sizes.rung * fade);
+      this.dnaRungs.setColorAt(2 * k, rungColor(base, flank, this.col).lerp(this.black, dark * 0.9));
+      this.dnaRungs.setColorAt(2 * k + 1, rungColor(complement(base), flank, this.col).lerp(this.black, dark * 0.9));
     }
   }
 
@@ -443,15 +443,15 @@ export class TowerScene {
       this.mrnaPath.getPointAt(dist / this.mrnaLength, this.a);
       const fade = smoothstep(0, 10, k);
       const active = hl !== null && j >= hl.start && j < hl.start + hl.length;
-      setSphere(this.mrnaBeads, k, this.a, 0.055 * fade * (active ? 1.35 + 0.5 * hl!.pulse : 1));
-      this.col.setHex(BASE_COLORS[this.seq[j]] ?? BASE_COLORS.N); // U takes T's colour
+      setSphere(this.mrnaBeads, k, this.a, 0.055 * dnaScale().bead * fade * (active ? 1.35 + 0.5 * hl!.pulse : 1));
+      this.col.setHex(baseColor(this.seq[j])); // U takes T's colour
       if (active) this.col.lerp(this.white, 0.2 + 0.5 * hl!.pulse);
       this.mrnaBeads.setColorAt(k, this.col);
       const nextDist = dist - STEP;
       if (j + 1 < polyPos && j + 1 < this.seq.length && nextDist >= 0) {
         this.mrnaPath.getPointAt(nextDist / this.mrnaLength, this.b);
-        setCylinder(this.mrnaLinks, k, this.a, this.b, 0.02 * fade);
-        this.mrnaLinks.setColorAt(k, this.col.setHex(0x9aa7bd));
+        setCylinder(this.mrnaLinks, k, this.a, this.b, 0.02 * dnaScale().thread * fade);
+        this.mrnaLinks.setColorAt(k, mrnaLinkColor(j, this.col));
       } else hideInstances(this.mrnaLinks, k);
     }
   }
@@ -506,7 +506,7 @@ export class TowerScene {
     const aspect = w / h;
     this.camera.aspect = aspect;
     // Fit the whole tower, floor to ceiling, plus the orbiting ribosome and protein.
-    const inset = w < 600 ? 0.18 : 0.07; // room at the bottom for the legend and caveat
+    const inset = w < 600 ? 0.1 : 0.07; // room under the floor so its glow isn't cut off
     const halfH = ((Y_TOP - Y_BOTTOM) / 2 + 0.8) / (1 - inset);
     const halfW = 5.6;
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));

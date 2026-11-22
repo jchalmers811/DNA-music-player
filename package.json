@@ -12,6 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@jchalmers811/core": "file:../Components/.local-packs/jchalmers811-core-0.3.0.tgz",
+    "@jchalmers811/tokens": "file:../Components/.local-packs/jchalmers811-tokens-0.3.0.tgz",
+    "@jchalmers811/web": "file:../Components/.local-packs/jchalmers811-web-0.3.0.tgz",
     "three": "^0.170.0",
     "tone": "^15.1.22"
   },

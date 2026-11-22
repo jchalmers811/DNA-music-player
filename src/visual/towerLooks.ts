@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { baseColor } from './look';
 import { hideInstances, makeInstanced, markDirty, setSphere } from './sceneUtils';
 
 /**
@@ -154,7 +155,6 @@ export interface BlockEffect {
   create(ctx: BlockContext): BlockEffectInstance | null;
 }
 
-const BASE_COLS = [0x34d399, 0x60a5fa, 0xfbbf24, 0xf87171];
 
 /** Free nucleotides drifting around; those near the polymerase are pulled in and used up. */
 class PlainBlocks implements BlockEffectInstance {
@@ -170,7 +170,7 @@ class PlainBlocks implements BlockEffectInstance {
     this.blocks = Array.from({ length: this.count }, (_, k) => ({
       p: new THREE.Vector3(),
       v: new THREE.Vector3(),
-      color: new THREE.Color(BASE_COLS[k % 4]),
+      color: new THREE.Color(baseColor('ACGT'[k % 4])),
       life: 1,
     }));
     for (const b of this.blocks) this.spawn(b, true);

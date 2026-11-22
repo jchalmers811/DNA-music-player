@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { dnaMaterial } from './look';
 
 /** Small helpers shared by the 3D scenes. */
 
@@ -29,9 +30,18 @@ export function hideInstances(mesh: THREE.InstancedMesh, ...indices: number[]): 
   for (const i of indices) mesh.setMatrixAt(i, ZERO);
 }
 
-/** An instanced mesh with every slot hidden: an untouched slot would otherwise draw a full-size shape at the origin. */
-export function makeInstanced(geo: THREE.BufferGeometry, count: number, parent: THREE.Object3D): THREE.InstancedMesh {
-  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.06 }), count);
+/**
+ * An instanced mesh with every slot hidden: an untouched slot would otherwise draw a full-size shape at the origin.
+ * `dna` marks the DNA and mRNA, which take the current look's material (see look.ts).
+ */
+export function makeInstanced(
+  geo: THREE.BufferGeometry,
+  count: number,
+  parent: THREE.Object3D,
+  opts: { dna?: boolean } = {},
+): THREE.InstancedMesh {
+  const solid = () => new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.06 });
+  const mesh = new THREE.InstancedMesh(geo, opts.dna ? dnaMaterial(solid) : solid(), count);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.setColorAt(0, new THREE.Color(0xffffff));
   hideInstances(mesh, ...range(count));
@@ -83,23 +93,15 @@ export function radialTexture(stops: [number, string][], rings: number[] = [], r
 }
 
 const FLANK_BASES = 'ACGT';
-/** Muted greys for DNA outside the gene: still a ladder, but clearly not part of what's playing. */
-const FLANK_RUNG_COLORS: Record<string, number> = { A: 0x5d6678, C: 0x4f5869, G: 0x687183, T: 0x565f70 };
-export const FLANK_BACKBONE = [0x6f7889, 0x5a6273] as const;
 
 /**
  * DNA doesn't end where a gene ends: the chromosome carries on either side.
- * Outside the sequence the scenes draw grey stand-in bases, fixed per position
+ * Outside the sequence the scenes draw faint stand-in bases (see look.ts), fixed per position
  * so they slide along like the real ones instead of flickering.
  */
 export function dnaBaseAt(seq: string, i: number): { base: string; flank: boolean } {
   if (i >= 0 && i < seq.length) return { base: seq[i], flank: false };
   return { base: FLANK_BASES[Math.imul(i, 0x9e3779b1) >>> 30], flank: true };
-}
-
-/** Rung colour for one base of a strand: its usual colour inside the gene, grey outside. */
-export function rungColor(base: string, flank: boolean, colors: Record<string, number>): number {
-  return flank ? (FLANK_RUNG_COLORS[base] ?? FLANK_RUNG_COLORS.A) : (colors[base] ?? colors.N);
 }
 
 const MIN_ZOOM = 0.5;

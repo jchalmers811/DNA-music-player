@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { complement } from '../core/genetics';
+import { backboneColor, dnaMaterial, dnaScale, rungColor, threadColor } from './look';
 import { addZoomControls } from './sceneUtils';
 
 /** Idealised B-DNA geometry, in nanometres (1 scene unit = 1 nm). */
@@ -11,16 +12,6 @@ const GROOVE = THREE.MathUtils.degToRad(140); // strand offset → major/minor g
 /** How much of the axis (in nm) should fill the long side of the view. */
 const VISIBLE_LENGTH = 17;
 const EDGE_FADE = 16; // bases
-
-export const BASE_COLORS: Record<string, number> = {
-  A: 0x34d399,
-  T: 0xf87171,
-  G: 0xfbbf24,
-  C: 0x60a5fa,
-  N: 0x6b7280,
-};
-
-const STRAND_COLORS = [0xa5b4cf, 0x7f8db0];
 
 export interface HelixHighlight {
   start: number;
@@ -60,6 +51,7 @@ export class HelixView {
   private readonly scale = new THREE.Vector3();
   private readonly col = new THREE.Color();
   private readonly white = new THREE.Color(0xffffff);
+  private readonly sizes = dnaScale();
   private static readonly UP = new THREE.Vector3(0, 1, 0);
   private static readonly ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
@@ -87,7 +79,7 @@ export class HelixView {
     const make = (geo: THREE.BufferGeometry, count: number) => {
       const mesh = new THREE.InstancedMesh(
         geo,
-        new THREE.MeshStandardMaterial({ roughness: 0.38, metalness: 0.08 }),
+        dnaMaterial(() => new THREE.MeshStandardMaterial({ roughness: 0.38, metalness: 0.08 })),
         count,
       );
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -154,10 +146,11 @@ export class HelixView {
       const marker = this.markers.get(i);
       for (let strand = 0; strand < 2; strand++) {
         const p = strand === 0 ? this.a : this.b;
-        const r = 0.19 * fade * (active ? 1.12 + 0.35 * pulse : 1);
+        const r = 0.19 * this.sizes.bead * fade * (active ? 1.12 + 0.35 * pulse : 1);
         this.m.compose(p, this.q.identity(), this.s.setScalar(r));
         this.spheres.setMatrixAt(2 * k + strand, this.m);
-        this.col.setHex(marker ?? STRAND_COLORS[strand]);
+        if (marker !== undefined) this.col.setHex(marker);
+        else backboneColor(i, strand, false, this.col);
         if (active) this.col.lerp(this.white, 0.25 + 0.5 * pulse);
         this.spheres.setColorAt(2 * k + strand, this.col);
       }
@@ -166,26 +159,24 @@ export class HelixView {
       if (i + 1 < seq.length) {
         this.point(i + 1, 0, pos, this.c);
         this.point(i + 1, 1, pos, this.d);
-        this.cylinder(this.links, 2 * k, this.a, this.c, 0.055 * fade);
-        this.cylinder(this.links, 2 * k + 1, this.b, this.d, 0.055 * fade);
+        this.cylinder(this.links, 2 * k, this.a, this.c, 0.055 * this.sizes.thread * fade);
+        this.cylinder(this.links, 2 * k + 1, this.b, this.d, 0.055 * this.sizes.thread * fade);
       } else {
         this.links.setMatrixAt(2 * k, HelixView.ZERO);
         this.links.setMatrixAt(2 * k + 1, HelixView.ZERO);
       }
-      this.col.setHex(STRAND_COLORS[0]);
-      this.links.setColorAt(2 * k, this.col);
-      this.col.setHex(STRAND_COLORS[1]);
-      this.links.setColorAt(2 * k + 1, this.col);
+      this.links.setColorAt(2 * k, threadColor(i, 0, false, this.col));
+      this.links.setColorAt(2 * k + 1, threadColor(i, 1, false, this.col));
 
       // Base-pair rung, split into two half-colours
       const base = seq[i];
-      const rr = 0.085 * fade * (active ? 1.3 + 0.9 * pulse : 1);
+      const rr = 0.085 * this.sizes.rung * fade * (active ? 1.3 + 0.9 * pulse : 1);
       this.cylinder(this.rungs, 2 * k, this.a, this.mid, rr);
       this.cylinder(this.rungs, 2 * k + 1, this.b, this.mid, rr);
-      this.col.setHex(BASE_COLORS[base] ?? BASE_COLORS.N);
+      rungColor(base, false, this.col);
       if (active) this.col.lerp(this.white, 0.15 + 0.5 * pulse);
       this.rungs.setColorAt(2 * k, this.col);
-      this.col.setHex(BASE_COLORS[complement(base)] ?? BASE_COLORS.N);
+      rungColor(complement(base), false, this.col);
       if (active) this.col.lerp(this.white, 0.15 + 0.5 * pulse);
       this.rungs.setColorAt(2 * k + 1, this.col);
     }
@@ -200,7 +191,8 @@ export class HelixView {
   /** Backbone position of base i on a strand, with the playhead at the origin. */
   private point(i: number, strand: number, pos: number, out: THREE.Vector3): THREE.Vector3 {
     const theta = i * TWIST + strand * GROOVE;
-    return out.set((i - pos) * RISE, RADIUS * Math.cos(theta), RADIUS * Math.sin(theta));
+    const radius = RADIUS * this.sizes.radius;
+    return out.set((i - pos) * RISE, radius * Math.cos(theta), radius * Math.sin(theta));
   }
 
   private cylinder(mesh: THREE.InstancedMesh, index: number, from: THREE.Vector3, to: THREE.Vector3, radius: number) {

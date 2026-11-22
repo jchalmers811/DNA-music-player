@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { complement } from '../core/genetics';
-import { addZoomControls } from './sceneUtils';
+import { addZoomControls, BasePicker } from './sceneUtils';
 
 /** Idealised B-DNA geometry, in nanometres (1 scene unit = 1 nm). */
 const TWIST = (2 * Math.PI) / 10.5; // ~34.3° per base pair
@@ -46,6 +46,8 @@ export class HelixView {
   private seq = '';
   private markers = new Map<number, number>();
   private readonly resizeObserver: ResizeObserver;
+  /** Click the DNA to pick a base. */
+  readonly picker: BasePicker;
 
   // scratch objects, reused every frame
   private readonly m = new THREE.Matrix4();
@@ -72,7 +74,11 @@ export class HelixView {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, windowSize < 150 ? 1.5 : 2));
     this.renderer.setClearColor(0x000000, 0);
     container.prepend(this.renderer.domElement);
-    addZoomControls(this.renderer.domElement, this.camera);
+    // The helix fills this view, so a click anywhere in line with a base pair picks it.
+    this.picker = new BasePicker(this.renderer.domElement, this.camera, this.orient, windowSize, Infinity);
+    addZoomControls(this.renderer.domElement, this.camera, {
+      keepZoom: (e) => this.picker.at(e.clientX, e.clientY) !== null,
+    });
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
     const key = new THREE.DirectionalLight(0xffffff, 2.4);
@@ -132,10 +138,12 @@ export class HelixView {
     const { n, seq } = this;
     const start = Math.floor(pos) - Math.floor(n / 2);
     this.spin.rotation.x = timeSec * 0.08;
+    this.picker.begin(start);
 
     for (let k = 0; k < n; k++) {
       const i = start + k;
       if (i < 0 || i >= seq.length) {
+        this.picker.set(k, null);
         for (const mesh of [this.spheres, this.links, this.rungs]) {
           mesh.setMatrixAt(2 * k, HelixView.ZERO);
           mesh.setMatrixAt(2 * k + 1, HelixView.ZERO);
@@ -143,6 +151,7 @@ export class HelixView {
         continue;
       }
       const fade = smoothstep(0, EDGE_FADE, Math.min(k, n - 1 - k));
+      this.picker.set(k, fade > 0.3 ? this.mid.set((i - pos) * RISE, 0, 0) : null);
       const active = highlight !== null && i >= highlight.start && i < highlight.start + highlight.length;
       const pulse = active ? highlight!.pulse : 0;
 

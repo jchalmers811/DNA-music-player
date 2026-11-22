@@ -95,7 +95,7 @@ For very long sequences, summarise fixed windows (for example GC content per 1 k
 
 Play two sequences in parallel, such as the same gene from two species. Matching bases are consonant and mismatches are dissonant, so conservation and difference become audible.
 
-### 4.14 Mutation playground
+### 4.14 Mutation playground (built, v0.7.0)
 
 Let the user edit a base and hear the change immediately, for example a point mutation in a codon, to build intuition about what changes and what doesn't.
 
@@ -274,7 +274,7 @@ Genetic data is among the most sensitive data a person has. Processing everythin
 - Helix polish: reading-frame tints, variant glow, bloom
 - MIDI and WAV export
 - Comparison mode with two parallel sequences and side-by-side helices; needs sequence alignment
-- Mutation playground: edit a base and hear the change, with a sickle-cell demo on haemoglobin beta
+- Mutation playground: built in v0.7.0 (swap a base in the letter strip, Original / Mutated switch, sickle-cell demo). Still to come: inserting and deleting bases
 - Protein-property and chord-based mappings
 - Shareable settings links carrying settings and sample names only, never DNA
 - Extra visualisers such as a circular genome view

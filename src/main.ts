@@ -7,6 +7,7 @@ import { parseFasta, type FastaRecord } from './core/fasta';
 import { AMINO_ACIDS, BASE_NAMES, complement, gcContent, translate, translateCodon } from './core/genetics';
 import { getMapping, MAPPINGS, resolveReadingStart, type MappingId } from './core/mappings';
 import { KEY_NAMES, midiToName, SCALES } from './core/music';
+import { applyMutations, describeMutation, nextBase, withMutation } from './core/mutations';
 import { eventIndexAt, eventIndexForBase, positionAt } from './core/playhead';
 import { foldProtein, type FoldResult } from './core/fold';
 import {
@@ -17,9 +18,10 @@ import {
   type PropertyClass,
   type ProteinChain,
 } from './core/protein';
-import { SAMPLES } from './core/samples';
+import { SAMPLES, SICKLE_CELL } from './core/samples';
 import { soundSignature, type SignatureSetting, type SoundSignature } from './core/signature';
 import type { Base, FrameSetting, MappingResult, MusicSettings, ScaleId } from './core/types';
+import { mutationHtml } from './ui/mutationText';
 import { SequenceStrip } from './ui/strip';
 import { GeneScene, PROPERTY_COLORS } from './visual/geneScene';
 import { HelixView, type HelixHighlight } from './visual/helix';
@@ -106,6 +108,13 @@ const ui = {
   caveat: $('caveat'),
   legend: $('legend'),
   sceneNote: $('scene-note'),
+  mutationHint: $('mutation-hint'),
+  mutationControls: $('mutation-controls'),
+  mutationSwitch: $('mutation-switch'),
+  mutationCount: $('mutation-count'),
+  mutationLast: $('mutation-last'),
+  mutationReset: $<HTMLButtonElement>('mutation-reset'),
+  sickle: $<HTMLButtonElement>('sickle'),
 };
 
 // ---------- State ----------
@@ -115,7 +124,13 @@ const state = {
   soundName: '',
   /** The sound this sequence chose for itself; the controls can override it. */
   signature: null as SoundSignature | null,
+  /** What is playing and drawn now: the original, or the original with the mutations applied. */
   sequence: '',
+  /** The sequence as loaded. The sound signature always comes from this. */
+  original: '',
+  /** Point mutations made in the playground: position → new base. */
+  mutations: new Map<number, string>(),
+  showing: 'mutated' as 'original' | 'mutated',
   records: [] as FastaRecord[],
   mappingId: 'aminoAcid' as MappingId,
   settings: { key: 0, scale: 'majorPentatonic', faithful: false, frame: 'auto' } as MusicSettings,
@@ -128,6 +143,8 @@ const state = {
 let result: MappingResult = { events: [], totalBeats: 0, readingStart: 0 };
 let frameStart = 0; // reading frame shown in biology views
 let lastBioIndex = -2;
+/** What the latest click on a base did, shown beside the Original / Mutated switch. */
+let lastMutationHtml = '';
 let view: ViewId = readStoredView();
 let chain: ProteinChain = { residues: '', stopFound: false, truncated: false };
 const foldCache = new Map<string, FoldResult>();
@@ -189,11 +206,15 @@ function updateProtein() {
     for (const s of proteinScenes) s.setProtein(null);
     return;
   }
-  let fold = foldCache.get(chain.residues);
+  // A mutant starts folding from the same random chain as its original, so one
+  // changed amino acid nudges the shape instead of giving an unrelated one.
+  const seedFrom = state.mutations.size ? proteinFrom(state.original, frameStart).residues || chain.residues : chain.residues;
+  const foldKey = `${seedFrom}|${chain.residues}`;
+  let fold = foldCache.get(foldKey);
   if (!fold) {
-    fold = foldProtein(chain.residues);
+    fold = foldProtein(chain.residues, { seedFrom });
     if (foldCache.size > 8) foldCache.clear();
-    foldCache.set(chain.residues, fold);
+    foldCache.set(foldKey, fold);
   }
   const protein = { residues: chain.residues, fold, stopFound: chain.stopFound };
   for (const s of proteinScenes) s.setProtein(protein);
@@ -256,7 +277,11 @@ function loadRecord(record: FastaRecord, name: string, soundName: string) {
   // Switching sequence starts it from the top, and keeps playing if it was playing.
   const wasPlaying = engine.state === 'playing';
   engine.stop();
+  lastMutationHtml = '';
   state.sequence = seq;
+  state.original = seq;
+  state.mutations = new Map();
+  state.showing = 'mutated';
   state.name = name;
   state.soundName = soundName;
   helix.setSequence(seq);
@@ -318,7 +343,7 @@ const SETTING_LABELS: Record<SignatureSetting, string> = {
 
 /** Set key, scale, tempo, instrument and beat to the current sequence's own sound. */
 function applySignature() {
-  const sig = soundSignature(state.sequence);
+  const sig = soundSignature(state.original); // mutations never change the gene's sound
   state.signature = sig;
   state.settings.key = sig.key;
   state.settings.scale = sig.scale;
@@ -443,7 +468,9 @@ function remap(keepPosition: boolean) {
       if (translateCodon(seq.slice(i, i + 3)) === '*') for (let j = 0; j < 3; j++) markers.set(i + j, STOP_MARK);
   }
   helix.setMarkers(markers);
-  strip.setData(state.sequence, frameStart, state.showBiology);
+  const marked = state.showing === 'mutated' ? new Set(state.mutations.keys()) : new Set<number>();
+  strip.setData(state.sequence, frameStart, state.showBiology, marked);
+  renderMutationBar();
   updateDrums();
   updateProtein();
   lastBioIndex = -2;
@@ -506,6 +533,81 @@ function syncControls() {
       .join('');
   }
 }
+
+// ---------- Mutation playground ----------
+/** Show the original or the mutated version, in every view and in the music, keeping the place. */
+function showVersion(showing: 'original' | 'mutated') {
+  state.showing = showing;
+  state.sequence = showing === 'mutated' ? applyMutations(state.original, state.mutations) : state.original;
+  helix.setSequence(state.sequence);
+  remap(true);
+}
+
+function setMutations(mutations: Map<number, string>) {
+  state.mutations = mutations;
+  showVersion('mutated');
+}
+
+/** Start playing two codons before a change, so the new note is heard straight away. */
+async function playFromJustBefore(position: number) {
+  if (!result.events.length) return;
+  const idx = eventIndexForBase(result.events, Math.max(0, position - 6));
+  engine.pause();
+  engine.seek(result.events[Math.max(0, idx)].time);
+  await engine.play();
+}
+
+/** Change one base, say what that did, and play it. Changing it back to the original undoes it. */
+function changeBase(position: number, to: string) {
+  if (position < 0 || position >= state.original.length) return;
+  const mutated = applyMutations(state.original, state.mutations);
+  const from = state.original[position];
+  // The effect is described against the sequence with this one position still original.
+  const before = mutated.slice(0, position) + from + mutated.slice(position + 1);
+  const start = resolveReadingStart(before, getMapping(state.mappingId).usesFrame ? state.settings.frame : 'auto');
+  lastMutationHtml = mutationHtml(position, from, to, describeMutation(before, start, position, to));
+  setMutations(withMutation(state.original, state.mutations, position, to));
+  void playFromJustBefore(position);
+}
+
+/** A click on a base steps it to the next one; the fourth click puts the original back. */
+function cycleBase(position: number) {
+  if (position < 0 || position >= state.original.length) return;
+  const current = state.mutations.get(position) ?? state.original[position];
+  changeBase(position, nextBase(state.original[position], current));
+}
+// The letter strip and the DNA in all three views are clickable.
+strip.onPick = cycleBase;
+helix.picker.onPick = cycleBase;
+geneScene.picker.onPick = cycleBase;
+towerScene.picker.onPick = cycleBase;
+
+function sickleApplied(): boolean {
+  return state.mutations.get(SICKLE_CELL.position) === SICKLE_CELL.base;
+}
+
+function renderMutationBar() {
+  const n = state.mutations.size;
+  ui.mutationHint.hidden = n > 0;
+  ui.mutationControls.hidden = n === 0;
+  ui.mutationCount.textContent = n === 1 ? '1 change' : `${n} changes`;
+  ui.mutationLast.innerHTML = lastMutationHtml;
+  for (const btn of ui.mutationSwitch.querySelectorAll<HTMLButtonElement>('button'))
+    btn.setAttribute('aria-checked', String(btn.dataset.showing === state.showing));
+  ui.sickle.hidden = ui.sample.value !== SICKLE_CELL.sampleId;
+  ui.sickle.textContent = sickleApplied() ? 'Remove the sickle-cell mutation' : 'Try the sickle-cell mutation';
+}
+
+for (const btn of ui.mutationSwitch.querySelectorAll<HTMLButtonElement>('button'))
+  btn.addEventListener('click', () => showVersion(btn.dataset.showing as 'original' | 'mutated'));
+ui.mutationReset.addEventListener('click', () => {
+  lastMutationHtml = '';
+  setMutations(new Map());
+});
+ui.sickle.addEventListener('click', () => {
+  const { position, base } = SICKLE_CELL;
+  changeBase(position, sickleApplied() ? state.original[position] : base);
+});
 
 // ---------- Playback ----------
 function currentPosition() {

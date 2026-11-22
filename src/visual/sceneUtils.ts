@@ -111,11 +111,12 @@ const MAX_ZOOM = 4;
  * Uses the camera's zoom (a lens zoom), so each view's own fitting and
  * framing stay untouched and zoom 1 is exactly the default view.
  * onPinchStart lets a view drop any one-finger drag, so it doesn't jump.
+ * keepZoom says when a double-click means something else (clicking the DNA twice).
  */
 export function addZoomControls(
   canvas: HTMLCanvasElement,
   camera: THREE.PerspectiveCamera,
-  onPinchStart?: () => void,
+  { onPinchStart, keepZoom }: { onPinchStart?: () => void; keepZoom?: (e: MouseEvent) => boolean } = {},
 ): void {
   const apply = (zoom: number) => {
     camera.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
@@ -130,7 +131,9 @@ export function addZoomControls(
     },
     { passive: false },
   );
-  canvas.addEventListener('dblclick', () => apply(1));
+  canvas.addEventListener('dblclick', (e) => {
+    if (!keepZoom?.(e)) apply(1);
+  });
 
   // Two-finger pinch. One finger still scrolls the page or turns the view as before.
   const spread = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
@@ -156,4 +159,119 @@ export function addZoomControls(
   canvas.addEventListener('touchcancel', end);
   // iOS Safari: stop its own page pinch-zoom starting over the picture.
   canvas.addEventListener('gesturestart', (e) => e.preventDefault());
+}
+
+/**
+ * Finds which base pair of a drawn DNA strand is under the pointer.
+ *
+ * A scene tells it, each frame, where the centre of each drawn base pair is.
+ * A click (not a drag) anywhere in line with a base pair, within `band` of the
+ * strand's centre line, picks that base. The pointer shows a hand over the DNA.
+ */
+export class BasePicker {
+  /** Called with the base index when the DNA is clicked. */
+  onPick: (index: number) => void = () => {};
+  private start = 0;
+  private readonly pts: Float32Array; // xyz per slot, in `frame` coordinates; NaN = not pickable
+  private readonly sx: Float32Array;
+  private readonly sy: Float32Array;
+  private readonly v = new THREE.Vector3();
+  private readonly up = new THREE.Vector3();
+
+  /**
+   * @param frame the object whose coordinates the centres are given in
+   * @param band how far from the strand's centre line a click still counts, in scene units (Infinity = anywhere in line)
+   */
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    private readonly camera: THREE.PerspectiveCamera,
+    private readonly frame: THREE.Object3D,
+    private readonly count: number,
+    private readonly band: number,
+  ) {
+    this.pts = new Float32Array(count * 3).fill(NaN);
+    this.sx = new Float32Array(count);
+    this.sy = new Float32Array(count);
+
+    let down: { x: number; y: number } | null = null;
+    canvas.addEventListener('pointerdown', (e) => (down = { x: e.clientX, y: e.clientY }));
+    canvas.addEventListener('click', (e) => {
+      // A drag (turning the view) ends in a click too; only a still press counts.
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
+      const index = this.at(e.clientX, e.clientY);
+      if (index !== null) this.onPick(index);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse' || e.buttons) return;
+      canvas.style.cursor = this.at(e.clientX, e.clientY) !== null ? 'pointer' : '';
+    });
+  }
+
+  /** Start a frame: slot k will hold base `start + k`. */
+  begin(start: number): void {
+    this.start = start;
+  }
+
+  /** Centre of the base pair in slot k, or null if it isn't drawn. */
+  set(k: number, centre: THREE.Vector3 | null): void {
+    if (centre) centre.toArray(this.pts, k * 3);
+    else this.pts[k * 3] = NaN;
+  }
+
+  /** The base under a point on the screen, or null. */
+  at(clientX: number, clientY: number): number | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0) return null;
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    this.frame.updateWorldMatrix(true, false);
+    this.camera.updateMatrixWorld();
+    const toScreen = (v: THREE.Vector3) => {
+      v.project(this.camera);
+      v.set(((v.x + 1) / 2) * rect.width, ((1 - v.y) / 2) * rect.height, v.z);
+    };
+    const { pts, sx, sy, v, count } = this;
+    for (let k = 0; k < count; k++) {
+      if (Number.isNaN(pts[k * 3])) {
+        sx[k] = NaN;
+        continue;
+      }
+      toScreen(v.fromArray(pts, k * 3).applyMatrix4(this.frame.matrixWorld));
+      sx[k] = v.z > 1 ? NaN : v.x; // behind the camera
+      sy[k] = v.y;
+    }
+
+    let best = -1;
+    let bestPerp = Infinity;
+    for (let k = 0; k < count; k++) {
+      if (Number.isNaN(sx[k])) continue;
+      // The strand's direction on screen here, from the neighbouring base pairs.
+      const p = k > 0 && !Number.isNaN(sx[k - 1]) ? k - 1 : k;
+      const n = k < count - 1 && !Number.isNaN(sx[k + 1]) ? k + 1 : k;
+      if (p === n) continue;
+      const span = Math.hypot(sx[n] - sx[p], sy[n] - sy[p]);
+      if (span < 1e-3) continue;
+      const tx = (sx[n] - sx[p]) / span;
+      const ty = (sy[n] - sy[p]) / span;
+      const spacing = span / (n - p);
+      const dx = px - sx[k];
+      const dy = py - sy[k];
+      if (Math.abs(dx * tx + dy * ty) > spacing / 2 + 0.5) continue; // in line with a neighbour instead
+      const perp = Math.abs(dx * ty - dy * tx);
+      if (perp < bestPerp) {
+        bestPerp = perp;
+        best = k;
+      }
+    }
+    if (best < 0) return null;
+    if (this.band !== Infinity) {
+      // The band in pixels at this base's depth, never smaller than a fingertip.
+      v.fromArray(pts, best * 3).applyMatrix4(this.frame.matrixWorld);
+      this.up.set(0, 1, 0).applyQuaternion(this.camera.quaternion).multiplyScalar(this.band).add(v);
+      toScreen(this.up);
+      const bandPx = Math.max(28, Math.hypot(this.up.x - sx[best], this.up.y - sy[best]));
+      if (bestPerp > bandPx) return null;
+    }
+    return this.start + best;
+  }
 }

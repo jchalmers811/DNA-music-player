@@ -4,6 +4,7 @@ import { BASE_COLORS, type HelixHighlight } from './helix';
 import { ProteinChain, type SceneProtein } from './proteinChain';
 import {
   addZoomControls,
+  BasePicker,
   dnaBaseAt,
   FLANK_BACKBONE,
   hideInstances,
@@ -54,6 +55,8 @@ export class GeneScene {
   private readonly mrnaPath: THREE.CurvePath<THREE.Vector3>;
   private readonly ribDist: number; // path distance from polymerase exit to ribosome
   private readonly resizeObserver: ResizeObserver;
+  /** Click the DNA to pick a base. */
+  readonly picker: BasePicker;
 
   private seq = '';
   private frameStart = 0;
@@ -171,7 +174,11 @@ export class GeneScene {
     const end = () => (this.dragging = null);
     this.canvas.addEventListener('pointerup', end);
     this.canvas.addEventListener('pointercancel', end);
-    addZoomControls(this.canvas, this.camera, () => (this.dragging = null));
+    this.picker = new BasePicker(this.canvas, this.camera, this.orient, DNA_WINDOW, 0.75);
+    addZoomControls(this.canvas, this.camera, {
+      onPinchStart: () => (this.dragging = null),
+      keepZoom: (e) => this.picker.at(e.clientX, e.clientY) !== null,
+    });
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -211,11 +218,13 @@ export class GeneScene {
   // ---------- DNA: a twisted ladder that unzips inside the polymerase ----------
   private renderDna(polyPos: number): void {
     const start = Math.floor(polyPos) - DNA_WINDOW / 2;
+    this.picker.begin(start);
     for (let k = 0; k < DNA_WINDOW; k++) {
       const i = start + k;
       const x = POL_X + (i - polyPos) * STEP;
       // Fade at the window ends and before the edge of the layout, so DNA never runs under the overlays.
       const fade = smoothstep(0, 12, Math.min(k, DNA_WINDOW - 1 - k)) * smoothstep(BOUNDS.maxX + 0.3, BOUNDS.maxX - 1.8, x);
+      this.picker.set(k, fade > 0.3 ? this.center.set(x, DNA_Y, 0) : null);
       const open = Math.exp(-(((x - POL_X) / 0.75) ** 2)); // 1 inside the polymerase
       const r = 0.2 + 0.42 * open;
       const theta = i * TWIST * (1 - open);

@@ -136,3 +136,6 @@ ${wrap(SPIKE)}`,
     fasta: `>Telomere Homo sapiens telomeric repeat (TTAGGG)x100\n${wrap('TTAGGG'.repeat(100))}`,
   },
 ];
+
+/** The classic point mutation: the middle base of codon 7 of haemoglobin beta, GAG → GTG (Glu → Val). */
+export const SICKLE_CELL = { sampleId: 'hbb', position: 6 * 3 + 1, base: 'T' } as const;

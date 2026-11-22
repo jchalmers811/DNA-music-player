@@ -26,6 +26,12 @@ export interface FoldResult {
 export interface FoldOptions {
   iterations?: number;
   frames?: number;
+  /**
+   * Seed the random starting chain from this string instead of the residues.
+   * A mutant seeded with its original protein starts from the same chain, so a
+   * one-letter change nudges the fold instead of re-rolling it.
+   */
+  seedFrom?: string;
 }
 
 /** Deterministic PRNG so the same protein always folds the same way. */
@@ -149,7 +155,7 @@ export function radiusOfGyration(x: Float32Array): number {
 export function foldProtein(residues: string, options: FoldOptions = {}): FoldResult {
   const n = residues.length;
   const ss = predictSecondaryStructure(residues);
-  const rand = mulberry32(hashString(residues));
+  const rand = mulberry32(hashString(options.seedFrom ?? residues));
   const x = buildInitialChain(ss, rand);
   const frameCount = Math.max(2, options.frames ?? 24);
   if (n < 2) return { n, ss, frames: Array.from({ length: frameCount }, () => x.slice()) };

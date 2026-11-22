@@ -18,6 +18,11 @@ export class SequenceStrip {
   private cells: HTMLElement[] = [];
   private codonCells = new Map<number, HTMLElement>();
   private hlKey = '';
+  private marked: ReadonlySet<number> = new Set();
+  private center = 0;
+
+  /** Called when a base is tapped, or Enter is pressed (for the base at the playhead). */
+  onPick: (index: number, cell: HTMLElement) => void = () => {};
 
   constructor(root: HTMLElement) {
     root.innerHTML = `
@@ -27,9 +32,25 @@ export class SequenceStrip {
       </div>`;
     this.viewport = root.querySelector('.strip-viewport')!;
     this.track = root.querySelector('.strip-track')!;
+
+    this.track.addEventListener('click', (e) => {
+      const cell = (e.target as HTMLElement).closest<HTMLElement>('.b');
+      if (cell) this.onPick(Number(cell.dataset.i), cell);
+    });
+    // Keyboard: the strip can be focused, and Enter picks the base at the playhead.
+    this.viewport.tabIndex = 0;
+    this.viewport.setAttribute('role', 'group');
+    this.viewport.setAttribute('aria-label', 'DNA letters. Press Enter to mutate the base at the playhead.');
+    this.viewport.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.target !== this.viewport) return;
+      const cell = this.cells[this.center - this.builtStart];
+      if (cell) this.onPick(this.center, cell);
+    });
   }
 
-  setData(seq: string, frameStart: number, showBiology: boolean): void {
+  /** `marked` positions (mutated bases) are underlined. */
+  setData(seq: string, frameStart: number, showBiology: boolean, marked: ReadonlySet<number> = new Set()): void {
+    this.marked = marked;
     this.seq = seq;
     this.frameStart = frameStart;
     this.showBiology = showBiology;
@@ -41,6 +62,7 @@ export class SequenceStrip {
     const width = this.viewport.clientWidth;
     const half = Math.ceil(width / CELL / 2) + 6;
     const center = Math.floor(pos);
+    this.center = Math.min(Math.max(0, this.seq.length - 1), center);
     const start = Math.max(0, center - half);
     const end = Math.min(this.seq.length, center + half + 1);
     if (start !== this.builtStart || end !== this.builtEnd) this.build(start, end);
@@ -69,6 +91,8 @@ export class SequenceStrip {
       const b = this.seq[i];
       const el = document.createElement('span');
       el.className = `b b-${b}`;
+      el.dataset.i = String(i);
+      if (this.marked.has(i)) el.classList.add('mutated');
       el.style.left = `${(i - start) * CELL}px`;
       el.textContent = b;
       if ((i + 1) % 10 === 0) el.dataset.tick = String(i + 1);

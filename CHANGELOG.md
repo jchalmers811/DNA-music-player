@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0: Mutation playground
+
+- **Mutate the gene.** Click any letter in the strip under the animation, or click the DNA itself in any of the three views, and that base changes to the next one. Each click steps through the other three bases, and the fourth brings back the original. A line under the strip says what the change did to the protein, for example `GAG → GTG · Glu → Val`, or that it is silent, ends the protein early or breaks the start codon. Playback restarts just before the change so you hear it straight away. Mutated letters are underlined.
+- **Original / Mutated switch.** Once you have made a change, flip the music and the animation between the two versions without losing your place. Reset undoes everything.
+- **The sound stays the gene's own.** The key, scale, tempo, instrument and drums always come from the original sequence, so the only thing you hear change is the mutation.
+- **Try the sickle-cell mutation**: a button on haemoglobin beta makes the famous one-letter change and jumps to it.
+- A mutated protein now folds from the same starting point as the original, so one changed amino acid nudges the shape instead of giving an unrelated one.
+- Keyboard: focus the strip and press Enter to mutate the base at the playhead.
+
 ## 0.6.0: Easier views, DNA that keeps flowing, and zoom
 
 - The view picker (Gene → protein, 3D scene, Double helix) is back in the sidebar as its own card, instead of being tucked away in More settings.

@@ -33,6 +33,18 @@
           </div>
 
           <div class="strip" id="strip"></div>
+          <div class="mutation-bar">
+            <p class="hint" id="mutation-hint">Click a letter, or the DNA above, to mutate it. Each click gives the next base; the fourth brings back the original.</p>
+            <div class="mutation-controls" id="mutation-controls" hidden>
+              <div class="segmented two" id="mutation-switch" role="radiogroup" aria-label="Which version is playing">
+                <button type="button" role="radio" data-showing="original">Original</button>
+                <button type="button" role="radio" data-showing="mutated">Mutated</button>
+              </div>
+              <span class="mutation-count" id="mutation-count"></span>
+              <button type="button" class="btn btn-ghost" id="mutation-reset">Reset</button>
+              <span class="mutation-last" id="mutation-last" role="status"></span>
+            </div>
+          </div>
 
           <div class="transport">
             <button id="play" class="btn-play" aria-label="Play" title="Play / pause (space)">
@@ -63,6 +75,7 @@
               <select id="sample"></select>
             </label>
             <p class="hint" id="sample-about"></p>
+            <button type="button" class="btn btn-ghost" id="sickle" hidden></button>
             <button type="button" class="btn btn-dashed" id="import-toggle" aria-expanded="false" aria-controls="import">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
               Use your own DNA (FASTA)

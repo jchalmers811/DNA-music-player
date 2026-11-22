@@ -4,6 +4,7 @@ import { BASE_COLORS, type HelixHighlight } from './helix';
 import { ProteinChain, type SceneProtein } from './proteinChain';
 import {
   addZoomControls,
+  BasePicker,
   dnaBaseAt,
   FLANK_BACKBONE,
   hideInstances,
@@ -95,6 +96,8 @@ function dnaCentre(s: number, t: number, out: THREE.Vector3): THREE.Vector3 {
 
 export class TowerScene {
   readonly canvas: HTMLCanvasElement;
+  /** Click the DNA to pick a base. */
+  readonly picker: BasePicker;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
@@ -273,7 +276,11 @@ export class TowerScene {
     const end = () => (this.dragging = null);
     this.canvas.addEventListener('pointerup', end);
     this.canvas.addEventListener('pointercancel', end);
-    addZoomControls(this.canvas, this.camera, () => (this.dragging = null));
+    this.picker = new BasePicker(this.canvas, this.camera, this.root, DNA_WINDOW, DNA_R * 3);
+    addZoomControls(this.canvas, this.camera, {
+      onPinchStart: () => (this.dragging = null),
+      keepZoom: (e) => this.picker.at(e.clientX, e.clientY) !== null,
+    });
 
     this.setOptions(opts.options ?? {});
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -392,6 +399,7 @@ export class TowerScene {
     for (let k = k0 + 1; k < n; k++) carry(k - 1, k);
     for (let k = k0 - 1; k >= 0; k--) carry(k + 1, k);
 
+    this.picker.begin(start);
     for (let k = 0; k < n; k++) {
       const i = start + k;
       const { base, flank } = dnaBaseAt(this.seq, i);
@@ -401,6 +409,11 @@ export class TowerScene {
       this.bin.crossVectors(this.tangents[k], nrm);
       const fade = smoothstep(0, 1.0, Math.min(c.y - Y_BOTTOM, Y_TOP - c.y));
       const dark = this.darkAt(c.y);
+      if (fade > 0.3) {
+        this.mid.copy(c);
+        if (spin) this.mid.applyAxisAngle(UP, spin);
+        this.picker.set(k, this.mid);
+      } else this.picker.set(k, null);
       const open = 1 - smoothstep(0.35, 0.6, Math.abs(s)); // 1 inside the polymerase
       const r = DNA_R * (1 + open * 0.9);
       const th = i * TWIST;

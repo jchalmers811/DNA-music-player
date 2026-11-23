@@ -12,6 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@jchalmers811/core": "^0.4.0",
+    "@jchalmers811/tokens": "^0.4.0",
+    "@jchalmers811/web": "^0.4.0",
     "three": "^0.170.0",
     "tone": "^15.1.22"
   },

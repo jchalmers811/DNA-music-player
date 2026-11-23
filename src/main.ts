@@ -1,3 +1,11 @@
+import '@jchalmers811/tokens/css';
+import '@jchalmers811/web/button';
+import '@jchalmers811/web/select';
+import '@jchalmers811/web/segmented-control';
+import '@jchalmers811/web/slider';
+import '@jchalmers811/web/switch';
+import '@jchalmers811/web/text-area';
+import { brands, modes } from '@jchalmers811/tokens';
 import './style.css';
 import { version } from '../package.json';
 import { AudioEngine } from './audio/engine';
@@ -9,30 +17,19 @@ import { getMapping, MAPPINGS, resolveReadingStart, type MappingId } from './cor
 import { KEY_NAMES, midiToName, SCALES } from './core/music';
 import { eventIndexAt, eventIndexForBase, positionAt } from './core/playhead';
 import { foldProtein, type FoldResult } from './core/fold';
-import {
-  PROPERTY_LABELS,
-  predictSecondaryStructure,
-  proteinFrom,
-  structureSummary,
-  type PropertyClass,
-  type ProteinChain,
-} from './core/protein';
+import { predictSecondaryStructure, proteinFrom, structureSummary, type ProteinChain } from './core/protein';
 import { SAMPLES } from './core/samples';
 import { soundSignature, type SignatureSetting, type SoundSignature } from './core/signature';
 import type { Base, FrameSetting, MappingResult, MusicSettings, ScaleId } from './core/types';
 import { SequenceStrip } from './ui/strip';
-import { GeneScene, PROPERTY_COLORS } from './visual/geneScene';
+import { GeneScene } from './visual/geneScene';
 import { HelixView, type HelixHighlight } from './visual/helix';
+import { baseCssColors, setLook, setLookTime } from './visual/look';
 import { TowerScene } from './visual/towerScene';
 
 type ViewId = 'helix' | 'protein' | 'tower';
 // v2: earlier versions saved the view on every load, not just when chosen.
 const VIEW_KEY = 'dna-music-player:view-choice';
-const CAVEATS: Record<ViewId, string> = {
-  helix: 'Idealised B-DNA diagram, not a measured structure',
-  protein: 'Simplified view. The protein shape is a rough estimate, not a prediction. Drag to turn it once the protein is complete.',
-  tower: 'Artistic view of the same steps. The protein shape is a rough estimate, not a prediction. Drag to look around.',
-};
 const VIEWS: ViewId[] = ['helix', 'protein', 'tower'];
 
 /** Longer inputs are truncated for now; window summarisation arrives in V2. */
@@ -40,7 +37,28 @@ const MAX_BASES = 200_000;
 const START_MARK = 0xffffff;
 const STOP_MARK = 0xf472b6;
 
+// ---------- Look ----------
+// The look comes from the component library's tokens. `?brand=gallery` tries another brand, and
+// `?theme=light` its light theme (the 3D scenes are drawn for dark, so dark is the default).
+const params = new URLSearchParams(location.search);
+const requestedBrand = params.get('brand');
+if (requestedBrand && brands.includes(requestedBrand)) document.documentElement.dataset.brand = requestedBrand;
+const requestedTheme = params.get('theme');
+if (requestedTheme && modes.includes(requestedTheme)) document.documentElement.dataset.theme = requestedTheme;
+
+// How the DNA itself is coloured. Spectral suits the black gallery wall; `?look=` overrides it.
+const requestedLook = params.get('look');
+setLook(
+  requestedLook === 'spectral' || requestedLook === 'classic'
+    ? requestedLook
+    : document.documentElement.dataset.brand === 'gallery'
+      ? 'spectral'
+      : 'classic',
+);
+for (const [base, color] of Object.entries(baseCssColors())) document.documentElement.style.setProperty(`--${base}`, color);
+
 // ---------- DOM ----------
+type Tag = HTMLElementTagNameMap;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const ui = {
   helix: $('helix'),
@@ -54,38 +72,35 @@ const ui = {
   bioNow: $('bio-now'),
   bioStats: $('bio-stats'),
   bioMapping: $('bio-mapping'),
-  sample: $<HTMLSelectElement>('sample'),
+  sample: $<Tag['ts-select']>('sample'),
   sampleAbout: $('sample-about'),
-  importToggle: $<HTMLButtonElement>('import-toggle'),
+  importToggle: $<Tag['ts-button']>('import-toggle'),
   importBox: $('import'),
-  fastaInput: $<HTMLTextAreaElement>('fasta-input'),
-  fastaLoad: $<HTMLButtonElement>('fasta-load'),
+  fastaInput: $<Tag['ts-text-area']>('fasta-input'),
+  fastaLoad: $<Tag['ts-button']>('fasta-load'),
   fastaFile: $<HTMLInputElement>('fasta-file'),
-  recordField: $('record-field'),
-  record: $<HTMLSelectElement>('record'),
+  record: $<Tag['ts-select']>('record'),
   seqMessage: $('seq-message'),
   seqMeta: $('seq-meta'),
-  mapping: $('mapping'),
+  mapping: $<Tag['ts-segmented-control']>('mapping'),
   mappingSummary: $('mapping-summary'),
   frameField: $('frame-field'),
-  frame: $<HTMLSelectElement>('frame'),
-  key: $<HTMLSelectElement>('key'),
-  scale: $<HTMLSelectElement>('scale'),
-  faithful: $<HTMLInputElement>('faithful'),
-  tempo: $<HTMLInputElement>('tempo'),
-  tempoOut: $('tempo-out'),
-  instrument: $<HTMLSelectElement>('instrument'),
-  beat: $<HTMLSelectElement>('beat'),
+  frame: $<Tag['ts-select']>('frame'),
+  key: $<Tag['ts-select']>('key'),
+  scale: $<Tag['ts-select']>('scale'),
+  faithful: $<Tag['ts-switch']>('faithful'),
+  tempo: $<Tag['ts-slider']>('tempo'),
+  instrument: $<Tag['ts-select']>('instrument'),
+  beat: $<Tag['ts-select']>('beat'),
   beatAbout: $('beat-about'),
   drumLevelField: $('drum-level-field'),
-  drumLevel: $<HTMLInputElement>('drum-level'),
-  drumLevelOut: $('drum-level-out'),
-  showBio: $<HTMLInputElement>('show-bio'),
+  drumLevel: $<Tag['ts-slider']>('drum-level'),
+  showBio: $<Tag['ts-switch']>('show-bio'),
   soundSummaryTitle: $('sound-summary-title'),
   soundSummaryText: $('sound-summary-text'),
   soundGroupTitle: $('sound-group-title'),
   soundNote: $('sound-note'),
-  sigReset: $<HTMLButtonElement>('sig-reset'),
+  sigReset: $<Tag['ts-button']>('sig-reset'),
   settings: $('settings'),
   settingsBackdrop: $('settings-backdrop'),
   settingsOpen: $<HTMLButtonElement>('settings-open'),
@@ -102,9 +117,7 @@ const ui = {
   vFrame: $('v-frame'),
   bioWhy: $('bio-why'),
   dropOverlay: $('drop-overlay'),
-  viewSwitch: $('view-switch'),
-  caveat: $('caveat'),
-  legend: $('legend'),
+  viewSwitch: $<Tag['ts-segmented-control']>('view-switch'),
   sceneNote: $('scene-note'),
 };
 
@@ -169,10 +182,7 @@ function setView(next: ViewId) {
   helix.setVisible(next === 'helix');
   geneScene.setVisible(next === 'protein');
   towerScene.setVisible(next === 'tower');
-  for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button')) {
-    btn.setAttribute('aria-checked', String(btn.dataset.view === next));  }
-  ui.caveat.textContent = CAVEATS[next];
-  ui.legend.hidden = next === 'helix';
+  ui.viewSwitch.value = next;
   ui.helix.classList.toggle('view-protein', next !== 'helix');
   updateProtein();
 }
@@ -206,34 +216,21 @@ function proteinNote(c: ProteinChain): string {
   return '';
 }
 
-ui.legend.innerHTML = (Object.keys(PROPERTY_LABELS) as PropertyClass[])
-  .map(
-    (k) =>
-      `<span><i style="background:#${PROPERTY_COLORS[k].toString(16).padStart(6, '0')}"></i>${PROPERTY_LABELS[k]}</span>`,
-  )
-  .join('');
-
 // ---------- Populate controls ----------
-for (const s of SAMPLES) ui.sample.add(new Option(s.name, s.id));
-ui.sample.add(new Option('Your sequence', 'custom'));
-ui.sample.options[ui.sample.options.length - 1].hidden = true;
-
-for (const m of MAPPINGS) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.role = 'radio';
-  btn.dataset.id = m.id;
-  btn.textContent = m.name;
-  btn.addEventListener('click', () => {
-    state.mappingId = m.id;
-    remap(true);
-  });
-  ui.mapping.append(btn);
+const sampleOptions = SAMPLES.map((s) => ({ value: s.id, label: s.name }));
+/** "Your sequence" is listed only while a pasted or dropped sequence is loaded. */
+function setSampleOptions(withCustom: boolean) {
+  ui.sample.options = withCustom ? [...sampleOptions, { value: 'custom', label: 'Your sequence' }] : sampleOptions;
 }
-KEY_NAMES.forEach((k, i) => ui.key.add(new Option(k, String(i))));
-for (const [id, s] of Object.entries(SCALES)) ui.scale.add(new Option(s.name, id));
-for (const inst of INSTRUMENTS) ui.instrument.add(new Option(inst.name, inst.id));
-for (const b of BEATS) ui.beat.add(new Option(b.name, b.id));
+setSampleOptions(false);
+
+ui.mapping.options = MAPPINGS.map((m) => ({ value: m.id, label: m.name }));
+ui.key.options = KEY_NAMES.map((k, i) => ({ value: String(i), label: k }));
+ui.scale.options = Object.entries(SCALES).map(([id, s]) => ({ value: id, label: s.name }));
+ui.instrument.options = INSTRUMENTS.map((inst) => ({ value: inst.id, label: inst.name }));
+ui.beat.options = BEATS.map((b) => ({ value: b.id, label: b.name }));
+ui.tempo.format = (v) => `${v} BPM`;
+ui.drumLevel.format = (v) => `${v}%`;
 ui.beat.value = state.beat;
 ui.scale.value = state.settings.scale;
 ui.instrument.value = state.instrument;
@@ -268,9 +265,10 @@ function loadRecord(record: FastaRecord, name: string, soundName: string) {
 function loadSample(id: string) {
   const sample = SAMPLES.find((s) => s.id === id);
   if (!sample) return;
+  setSampleOptions(false);
   ui.sample.value = id;
   ui.sampleAbout.textContent = sample.about;
-  ui.recordField.hidden = true;
+  ui.record.hidden = true;
   setMessage('');
   const { records } = parseFasta(sample.fasta);
   loadRecord(records[0], sample.name, sample.soundName ?? sample.name.replace(/\s*\(.*\)$/, ''));
@@ -281,14 +279,15 @@ function loadText(text: string, sourceName: string) {
     const { records, warnings } = parseFasta(text);
     state.records = records;
     setMessage(warnings.join(' '), warnings.length ? 'warn' : '');
+    setSampleOptions(true);
     ui.sample.value = 'custom';
     ui.sampleAbout.textContent = `Loaded from ${sourceName}.`;
-    ui.record.replaceChildren(
-      ...records.map(
-        (r, i) => new Option(`${r.id} (${r.sequence.length.toLocaleString()} bases)`, String(i)),
-      ),
-    );
-    ui.recordField.hidden = records.length < 2;
+    ui.record.options = records.map((r, i) => ({
+      value: String(i),
+      label: `${r.id} (${r.sequence.length.toLocaleString()} bases)`,
+    }));
+    ui.record.value = '0';
+    ui.record.hidden = records.length < 2;
     const r = records[0];
     loadRecord(r, r.description ? `${r.id} ${r.description}` : r.id, r.id);
     // loadRecord may add a truncation warning; keep parse warnings too
@@ -329,8 +328,7 @@ function applySignature() {
   engine.setInstrument(sig.instrument);
   ui.key.value = String(sig.key);
   ui.scale.value = sig.scale;
-  ui.tempo.value = String(sig.tempo);
-  ui.tempoOut.textContent = String(sig.tempo);
+  ui.tempo.value = sig.tempo;
   ui.instrument.value = sig.instrument;
   ui.beat.value = sig.beat;
 }
@@ -457,8 +455,7 @@ function updateDrums() {
 
 function syncControls() {
   const mapping = getMapping(state.mappingId);
-  for (const btn of ui.mapping.querySelectorAll<HTMLButtonElement>('button'))
-    btn.setAttribute('aria-checked', String(btn.dataset.id === state.mappingId));
+  ui.mapping.value = state.mappingId;
   ui.mappingSummary.textContent = mapping.summary;
   ui.vMapping.textContent = mapping.name;
   ui.frameField.hidden = !mapping.usesFrame;
@@ -572,6 +569,7 @@ function describeEvent(index: number): { short: string; long: string } {
 
 // ---------- Render loop ----------
 function frame(now: number) {
+  setLookTime(now / 1000);
   const beat = engine.currentBeat();
   const ph = positionAt(result.events, beat, result.readingStart);
   const ev = ph.index >= 0 ? result.events[ph.index] : null;
@@ -605,8 +603,11 @@ function frame(now: number) {
 ui.play.addEventListener('click', togglePlay);
 ui.stop.addEventListener('click', () => engine.stop());
 window.addEventListener('keydown', (e) => {
+  // Library components are custom elements, so the event's target is the component, not its
+  // inner control: any `ts-*` element keeps Space for itself.
   const t = e.target as HTMLElement;
-  if (e.code !== 'Space' || t.closest('textarea, input, select, button, [role="slider"]')) return;
+  if (e.code !== 'Space' || t.tagName.startsWith('TS-') || t.closest('textarea, input, select, button, [role="slider"]'))
+    return;
   e.preventDefault();
   togglePlay();
 });
@@ -631,7 +632,7 @@ ui.progress.addEventListener('keydown', (e) => {
 });
 
 ui.sample.addEventListener('change', () => ui.sample.value !== 'custom' && loadSample(ui.sample.value));
-ui.fastaLoad.addEventListener('click', () => loadText(ui.fastaInput.value, 'pasted text'));
+ui.fastaLoad.addEventListener('ts-press', () => loadText(ui.fastaInput.value, 'pasted text'));
 ui.fastaFile.addEventListener('change', () => {
   const file = ui.fastaFile.files?.[0];
   if (file) loadFile(file);
@@ -660,8 +661,7 @@ ui.faithful.addEventListener('change', () => {
   remap(true);
 });
 ui.tempo.addEventListener('input', () => {
-  state.tempo = Number(ui.tempo.value);
-  ui.tempoOut.textContent = ui.tempo.value;
+  state.tempo = ui.tempo.value;
   engine.setTempo(state.tempo);
   syncControls();
 });
@@ -670,7 +670,7 @@ ui.instrument.addEventListener('change', () => {
   engine.setInstrument(state.instrument);
   syncControls();
 });
-ui.sigReset.addEventListener('click', () => {
+ui.sigReset.addEventListener('ts-press', () => {
   applySignature();
   remap(true);
 });
@@ -680,14 +680,13 @@ ui.beat.addEventListener('change', () => {
   syncControls();
 });
 ui.drumLevel.addEventListener('input', () => {
-  state.drumLevel = Number(ui.drumLevel.value) / 100;
-  ui.drumLevelOut.textContent = ui.drumLevel.value;
+  state.drumLevel = ui.drumLevel.value / 100;
   ui.vDrumLevel.textContent = `${ui.drumLevel.value}%`;
   engine.setDrumLevel(state.drumLevel);
 });
 
 // ---------- Your own DNA ----------
-ui.importToggle.addEventListener('click', () => {
+ui.importToggle.addEventListener('ts-press', () => {
   const open = ui.importBox.hidden;
   ui.importBox.hidden = !open;
   ui.importToggle.setAttribute('aria-expanded', String(open));
@@ -701,7 +700,8 @@ function showSettingsPage(page: string | null) {
   const current = page ? ui.settings.querySelector<HTMLElement>(`.settings-page[data-page="${page}"]`) : null;
   ui.settingsTitle.textContent = current?.dataset.title ?? 'Settings';
   ui.settingsBack.hidden = page === null;
-  (current?.querySelector<HTMLElement>('select, input, button') ?? (page ? ui.settingsBack : ui.settingsClose)).focus();
+  const firstControl = current?.querySelector<HTMLElement>('ts-select, ts-slider, ts-segmented-control, select, input, button');
+  (firstControl ?? (page ? ui.settingsBack : ui.settingsClose)).focus();
 }
 function openSettings() {
   ui.settings.hidden = false;
@@ -726,7 +726,8 @@ ui.settingsBack.addEventListener('click', () => {
 for (const row of ui.settingsList.querySelectorAll<HTMLButtonElement>('button.set-row'))
   row.addEventListener('click', () => showSettingsPage(row.dataset.page!));
 window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || ui.settings.hidden) return;
+  // A component that used Escape itself (closing a select's list) prevents the default.
+  if (e.key !== 'Escape' || e.defaultPrevented || ui.settings.hidden) return;
   if (!ui.settingsBack.hidden) ui.settingsBack.click();
   else closeSettings();
 });
@@ -755,8 +756,11 @@ window.addEventListener('drop', (e) => {
   if (file) loadFile(file);
 });
 
-for (const btn of ui.viewSwitch.querySelectorAll<HTMLButtonElement>('button'))
-  btn.addEventListener('click', () => chooseView(btn.dataset.view as ViewId));
+ui.viewSwitch.addEventListener('change', () => chooseView(ui.viewSwitch.value as ViewId));
+ui.mapping.addEventListener('change', () => {
+  state.mappingId = ui.mapping.value as MappingId;
+  remap(true);
+});
 
 // ---------- Start ----------
 loadSample(SAMPLES[0].id);

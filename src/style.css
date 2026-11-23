@@ -1,21 +1,32 @@
+/*
+ * The look comes from the component library's tokens (@jchalmers811/tokens), picked by
+ * data-brand and data-theme on <html>. These app variables only rename them, so the whole page
+ * follows the brand, not just the library components. The page and panel backgrounds have no
+ * token of their own: they're the brand's surface colour darkened.
+ */
 :root {
-  --bg: #0a0e16;
-  --bg-elev: #111723;
-  --bg-elev-2: #18202f;
-  --line: #243045;
-  --text: #e6ebf3;
-  --text-dim: #93a0b5;
-  --text-faint: #6b788d;
-  --accent: #7dd3fc;
-  --accent-strong: #38bdf8;
+  --bg: color-mix(in srgb, var(--ts-color-bg-default) 42%, black);
+  --bg-elev: color-mix(in srgb, var(--ts-color-bg-default) 70%, black);
+  --bg-elev-2: var(--ts-color-bg-default);
+  --line: var(--ts-color-border-default);
+  --line-strong: var(--ts-color-border-strong);
+  --text: var(--ts-color-fg-default);
+  --text-dim: var(--ts-color-fg-muted);
+  --text-faint: color-mix(in oklab, var(--ts-color-fg-muted) 72%, var(--bg));
+  --accent: var(--ts-color-action-primary-bg);
+  --accent-hover: var(--ts-color-action-primary-bg-hover);
+  --on-accent: var(--ts-color-action-primary-fg);
+  --font: var(--ts-brand-font-family);
   --warn: #fbbf24;
+  /* The four bases keep their own colours: they're data, not brand. */
   --A: #34d399;
   --T: #f87171;
   --G: #fbbf24;
   --C: #60a5fa;
   --N: #6b7280;
   --cell: 22px;
-  --radius: 12px;
+  /* Panels are a little rounder than controls; a square brand keeps them square. */
+  --radius: calc(var(--ts-brand-radius) * 1.5);
   color-scheme: dark;
 }
 
@@ -28,7 +39,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font: 15px/1.45 var(--font);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -104,8 +115,14 @@ textarea {
   height: clamp(280px, 56vh, 620px);
   border-radius: var(--radius);
   overflow: hidden;
+  /* A soft light behind the scene: the brand's surface, lifted a little towards its accent. */
   background:
-    radial-gradient(120% 90% at 50% 45%, #15203a 0%, #0c1220 55%, #080b12 100%);
+    radial-gradient(
+      120% 90% at 50% 45%,
+      color-mix(in srgb, var(--ts-color-bg-default) 90%, var(--accent)) 0%,
+      var(--bg-elev) 55%,
+      var(--bg) 100%
+    );
   border: 1px solid var(--line);
 }
 .helix canvas {
@@ -144,27 +161,6 @@ textarea {
   transition: opacity 0.3s;
 }
 .scene-label[hidden] { display: none; }
-.legend {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px 12px;
-  max-width: 60%;
-  font-size: 11.5px;
-  color: var(--text-dim);
-  pointer-events: none;
-}
-.legend[hidden] { display: none; }
-.legend span { display: inline-flex; align-items: center; gap: 5px; }
-.legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
 .scene-note {
   position: absolute;
   top: 40px;
@@ -180,16 +176,6 @@ textarea {
   font: 500 12px ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: var(--text-faint);
   padding-top: 3px;
-}
-.caveat {
-  position: absolute;
-  left: 14px;
-  bottom: 10px;
-  max-width: 45%;
-  margin: 0;
-  font-size: 11.5px;
-  color: var(--text-faint);
-  pointer-events: none;
 }
 .now-playing {
   position: absolute;
@@ -301,13 +287,13 @@ textarea {
   border-radius: 50%;
   border: 0;
   background: var(--accent);
-  color: #06202e;
+  color: var(--on-accent);
   display: grid;
   place-items: center;
   cursor: pointer;
   transition: transform 0.1s, background-color 0.15s;
 }
-.btn-play:hover { background: #a5e2fd; }
+.btn-play:hover { background: var(--accent-hover); }
 .btn-play:active { transform: scale(0.95); }
 .btn-play svg { width: 26px; height: 26px; }
 .btn-play .i-pause { display: none; }
@@ -341,7 +327,7 @@ textarea {
   position: absolute;
   inset: 12px 0;
   border-radius: 4px;
-  background: var(--bg-elev-2);
+  background: var(--line);
 }
 .progress-fill {
   position: relative;
@@ -497,7 +483,7 @@ output { color: var(--text); font-weight: 600; }
 }
 .meta { color: var(--text-faint); }
 .message:empty { display: none; }
-.message.error { color: #fca5a5; }
+.message.error { color: var(--ts-color-fg-danger); }
 .message.warn { color: var(--warn); }
 
 .segmented {
@@ -523,7 +509,7 @@ output { color: var(--text); font-weight: 600; }
 .segmented button:hover { color: var(--text); }
 .segmented button[aria-checked='true'] {
   background: var(--accent);
-  color: #06202e;
+  color: var(--on-accent);
 }
 
 .toggle {
@@ -551,7 +537,7 @@ output { color: var(--text); font-weight: 600; }
   border-radius: 8px;
   padding: 8px 14px;
   background: var(--accent);
-  color: #06202e;
+  color: var(--on-accent);
   font-weight: 600;
   font-size: 13.5px;
   cursor: pointer;
@@ -597,15 +583,6 @@ output { color: var(--text); font-weight: 600; }
   .helix { height: clamp(240px, 46vh, 460px); }
   .helix.view-protein { height: clamp(360px, 64vh, 620px); }
   .view-switch { max-width: none; }
-  /* Stack the legend above the caveat instead of side by side. */
-  .legend {
-    left: 14px;
-    right: 14px;
-    max-width: none;
-    bottom: 46px;
-    justify-content: flex-start;
-  }
-  .caveat { max-width: none; right: 14px; }
 }
 @media (max-width: 420px) {
   .time { min-width: 0; font-size: 12px; }
@@ -625,7 +602,7 @@ output { color: var(--text); font-weight: 600; }
   min-height: 44px;
   background: transparent;
   color: var(--text);
-  border: 1px dashed #3a4a66;
+  border: 1px dashed var(--line-strong);
 }
 .btn-dashed:hover { border-color: var(--text-faint); }
 .btn-dashed svg { width: 18px; height: 18px; }
@@ -652,7 +629,7 @@ output { color: var(--text); font-weight: 600; }
 .settings-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(5, 8, 13, 0.62);
+  background: color-mix(in srgb, var(--ts-color-backdrop) 62%, transparent);
   z-index: 40;
 }
 .settings {
@@ -754,34 +731,10 @@ button.set-row .set-value::after {
   background: color-mix(in srgb, var(--warn) 18%, transparent);
   color: var(--warn);
 }
-/* Switches: a checkbox drawn as a sliding toggle. */
-.set-switch input {
-  appearance: none;
-  -webkit-appearance: none;
-  flex: none;
-  width: 46px;
-  height: 28px;
-  margin: 0;
-  border-radius: 14px;
-  background: #2c3a52;
-  position: relative;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.set-switch input::after {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 3px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--text);
-  transition: transform 0.15s;
-}
-.set-switch input:checked { background: var(--accent); }
-.set-switch input:checked::after { transform: translateX(18px); background: #06202e; }
-.set-switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Rows holding a library switch: the switch draws its own label and hint. */
+.set-switch { cursor: default; padding-block: 10px; }
+.set-switch:hover { background: transparent; }
+.set-switch ts-switch { flex: 1; }
 .set-note {
   margin: -2px 4px 0;
   font-size: 12.5px;
@@ -811,7 +764,7 @@ body.settings-open { overflow: hidden; }
     height: 5px;
     margin-left: -20px;
     border-radius: 3px;
-    background: #3a4a66;
+    background: var(--line-strong);
   }
   .settings-head { position: relative; padding-top: 22px; }
 }

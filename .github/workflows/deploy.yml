@@ -3,15 +3,21 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # Pull requests run the build and tests only; nothing is deployed.
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+  # @jchalmers811/* come from GitHub Packages. This repo needs read access on each
+  # package's settings page ("Manage Actions access").
+  packages: read
   pages: write
   id-token: write
 
 concurrency:
-  group: pages
+  # A pull request must never cancel a deploy of main.
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || 'pages' }}
   cancel-in-progress: true
 
 jobs:
@@ -23,14 +29,20 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: '@jchalmers811'
       - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm test
       - run: npm run build
-      - uses: actions/upload-pages-artifact@v5
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:
